@@ -1,0 +1,204 @@
+*xyno-crates.txt*  Cargo dependencies from inside Neovim: search, add, features, import
+
+                             xyno-crates.nvim
+
+==============================================================================
+CONTENTS                                                     *xyno-crates-contents*
+
+  1. Introduction ............................. |xyno-crates|
+  2. Requirements ............................. |xyno-crates-requirements|
+  3. Setup and options ........................ |xyno-crates-setup|
+  4. Commands ................................. |xyno-crates-commands|
+  5. Code actions and diagnostics ............. |xyno-crates-actions|
+  6. Keymaps .................................. |xyno-crates-keymaps|
+  7. Lua API .................................. |xyno-crates-api|
+  8. How it works ............................. |xyno-crates-how|
+  9. Platforms ................................ |xyno-crates-platforms|
+ 10. License and origin ....................... |xyno-crates-license|
+
+==============================================================================
+1. INTRODUCTION                                                     *xyno-crates*
+
+xyno-crates.nvim manages the dependencies of a Cargo project without leaving
+the editor: it searches crates.io and adds a crate with the features you pick,
+turns on a missing feature from a code action, and imports from a crate that
+is not a dependency yet.
+
+The crate-adding flow is inspired by the dependency handling of the JetBrains
+IDEs, which I still use. This plugin is independent and not affiliated with
+JetBrains.
+
+==============================================================================
+2. REQUIREMENTS                                             *xyno-crates-requirements*
+
+  - Neovim 0.12+
+  - xyno-rust.nvim (https://github.com/xynorash/xyno-rust.nvim) and
+    xyno-imports.nvim (https://github.com/xynorash/xyno-imports.nvim). Both
+    are checked in |xyno_crates.setup()|: without them one error line names
+    the missing plugin and nothing starts. xyno-imports.nvim is only needed
+    while the `add` or `import` module is on.
+  - `cargo` in $PATH (`cargo add`, `cargo metadata`)
+  - the tree-sitter `rust` parser (the unknown-crate scan)
+  - network access to crates.io for the search (the sparse index and the
+    cache are used where possible)
+  - rust-analyzer started through vim.lsp, for importing the new crate's items
+  - snacks.nvim (https://github.com/folke/snacks.nvim) for the |:CrateAdd|
+    pickers. |:CrateFeatures| falls back to vim.ui.select() without it.
+
+==============================================================================
+3. SETUP AND OPTIONS                                            *xyno-crates-setup*
+
+                                                            *xyno_crates.setup()*
+>lua
+    require("xyno_crates").setup({
+      commands = true, -- :CrateAdd :CrateFeatures
+      keymaps = false, -- false | true | { add = lhs|false, fix = lhs|false }
+      modules = {
+        add = true,      -- xyno_crates.crate_add
+        features = true, -- xyno_crates.crate_features
+        import = true,   -- xyno_crates.crate_import
+      },
+    })
+<
+The modules start once per session: a second call does not redefine their
+autocommands, language servers or keys.
+
+                                                        *xyno-crates-variables*
+`vim.g.xyno_crate_check = false` switches the unknown-crate hint off.
+
+                                                           *xyno-crates-config*
+Each module has a `config` table with its limits, for example
+`require("xyno_crates.crate_add").config.debounce_ms` (300),
+`max_diagnostics` (50 per buffer), `cargo_timeout_ms` (180000) and
+`max_lines` (20000: larger buffers get no hint); `crate_features.config`
+(`max_files`, `max_file_bytes`, `max_unused_files`, `max_unused_bytes`,
+`max_alts`); `crate_import.config` (`max_guesses` 3, `min_guess_len` 3,
+`poll_ms` 1000, `reload_timeout_ms` 60000).
+
+==============================================================================
+4. COMMANDS                                                    *xyno-crates-commands*
+
+                                                                     *:CrateAdd*
+:CrateAdd [query]
+    Search crates.io (the query, or ask for one), pick the crate, pick its
+    features (`default` is preselected; unticking it means
+    `--no-default-features`), pick the target (member, kind: dependencies,
+    dev-dependencies, build-dependencies; entries of [workspace.dependencies]
+    are marked) and run `cargo add`. The line cargo wrote is reported.
+
+                                                               *:CrateFeatures*
+:CrateFeatures [crate]
+    Explore the cargo features of a dependency of the current package: the
+    declared and the effective features, what each one unlocks (the gated
+    public items found in the crate's source), the default set, and an
+    "unused?" hint for a feature none of whose items appears in the
+    workspace. Toggle a feature from the list: Cargo.toml is edited
+    (`cargo add --features` for registry dependencies, a text edit that keeps
+    formatting and comments for the rest).
+
+==============================================================================
+5. CODE ACTIONS AND DIAGNOSTICS                                 *xyno-crates-actions*
+
+Two in-process language clients (no process is started) serve the normal
+code-action menu (vim.lsp.buf.code_action()), next to rust-analyzer's own:
+
+  Unknown crate   A path whose first segment is not known (std, a dependency
+                  of the file's package, the own crate, a local module, an
+                  import, ...) gets the hint "crate 'rand' is not a
+                  dependency" (source `xyno-crates`) and the actions
+                  "Add crate rand" (add with defaults, then import) and the
+                  |:CrateAdd| flow for it. The rules are conservative: a
+                  false positive is worse than a miss.
+  Missing feature rustc, rust-analyzer or bacon-ls report `cannot find
+                  derive macro `Serialize` in this scope`: the name is looked
+                  up in the source of the package's dependencies, the gate is
+                  resolved through the [features] table, and the action
+                  "Enable feature `derive` of `serde`" edits Cargo.toml.
+  Import          rust-analyzer offered nothing for an unresolved name: the
+                  crate named like the name, or crates.io search hits whose
+                  name equals or contains it, labelled as guesses, are added
+                  to the candidates of xyno-imports.nvim. Accepting one adds
+                  the crate, waits for rust-analyzer to load it and applies
+                  the import.
+
+The hint is rescanned after InsertLeave, TextChanged, BufWritePost,
+BufReadPost, a change of Cargo.toml or Cargo.lock, and the user event
+`AutoSaveWritePost` (data = { saved_buffer = bufnr }) for auto-save plugins
+that write without autocommands.
+
+==============================================================================
+6. KEYMAPS                                                      *xyno-crates-keymaps*
+
+No global keymap is set. `keymaps = true` maps, buffer-local:
+
+  <leader>rA    |:CrateAdd|   (Rust and Cargo.toml buffers)
+  <leader>rG    apply the missing-feature fix for the diagnostics on the
+                cursor line without the menu (Rust buffers)
+
+A table maps only the actions you list, to the keys you choose (`false`
+skips one): `{ add = "<leader>ca", fix = false }`.
+
+==============================================================================
+7. LUA API                                                          *xyno-crates-api*
+
+                                                              *xyno_crates.crate_add*
+`require("xyno_crates.crate_add")`:
+
+  scan({buf}, {meta})         the unknown-crate hits of a buffer
+  refresh({buf}, {cb})        rescan one buffer now
+  add({query}?, {cb}?)        the |:CrateAdd| flow
+  add_direct({buf}, {name}, {cb})
+                              add a crate with the defaults (newest release,
+                              no features, the package of the buffer)
+  build_argv({spec})          the `cargo add` argv of a spec, validated
+  run_add({root}, {spec}, {cb})
+  applicable_file({file})     whether a file gets the hint
+  ui.pick / ui.input          the picker and input seams
+
+                                                          *xyno_crates.crate_features*
+`require("xyno_crates.crate_features")`:
+
+  suggest_async({buf}, {diags}, {cb})  the missing-feature actions
+  features_of({dep})          declared and effective features of a dependency
+  set_features({dep}, {features}, {on}, {cb})
+  edit_manifest({text}, {spec}, {op}, {features})
+                              the text edit of a manifest (pure)
+  open({crate}?)              the |:CrateFeatures| flow
+  fix_at_cursor()             the fix of the cursor line
+
+                                                          *xyno_crates.crate_import*
+`require("xyno_crates.crate_import")`:
+
+  source({name}, {ctx}, {cb}) the import source (registered by setup)
+  add_and_import({buf}, {spec}, {cb})
+                              add `spec.crate`, wait for rust-analyzer,
+                              import
+
+==============================================================================
+8. HOW IT WORKS                                                      *xyno-crates-how*
+
+Crate metadata comes from `cargo metadata` and the crates.io sparse index
+(xyno_rust.crate_meta), cached. The unknown-crate scan walks the tree-sitter
+tree of the buffer, debounced. The missing-feature lookup reads the unpacked
+source of the dependencies (lib.rs and the modules it declares, behind
+`#[cfg(feature = "...")]`, `pub use`, `macro_rules!`). Everything that comes
+from the network or from files (crate and feature names) is validated before
+it reaches a command line; commands run as argv lists.
+
+==============================================================================
+9. PLATFORMS                                                  *xyno-crates-platforms*
+
+  Linux    tested by the specs of this repository
+  Windows  the guards of the original code are kept; no evidence from this
+           repository; in xynovim's CI the live rust-analyzer flows (the
+           hint and code action, the import flow) failed or hung there
+  macOS    nothing tested here; the macOS runs of xynovim's CI were not
+           stable
+
+==============================================================================
+10. LICENSE AND ORIGIN                                         *xyno-crates-license*
+
+MIT, Copyright (c) 2026 Xynorash. Extracted from xynovim
+(https://github.com/xynorash/xynovim), my Neovim configuration for Rust.
+
+ vim:tw=78:ts=8:ft=help:norl:

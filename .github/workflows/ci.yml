@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  NVIM_VERSION: v0.12.5
+  NVIM_SHA256: bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875
+  LAZY_SHA: 85c7ff3711b730b4030d03144f6db6375044ae82 # lazy.nvim v11.17.5
+  SNACKS_SHA: 882c996cf28183f4d63640de0b4c02ec886d01f2 # snacks.nvim main, the commit xynovim is tested with
+  TS_RUST_SHA: 77a3747266f4d621d0757825e6b11edcbf991ca5 # tree-sitter-rust
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install Neovim (pinned, checksum verified)
+        run: |
+          curl -fsSL -o nvim.tar.gz "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz"
+          echo "${NVIM_SHA256}  nvim.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/nvim"
+          tar -xzf nvim.tar.gz -C "$HOME/nvim" --strip-components=1
+          echo "$HOME/nvim/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the dependencies (xyno-rust.nvim, xyno-imports.nvim)
+        run: |
+          for name in xyno-rust.nvim xyno-imports.nvim; do
+            git init -q "$RUNNER_TEMP/$name"
+            git -C "$RUNNER_TEMP/$name" fetch -q --depth 1 "https://github.com/xynorash/$name.git" main
+            git -C "$RUNNER_TEMP/$name" checkout -q FETCH_HEAD
+          done
+          echo "XYNO_RUST_DIR=$RUNNER_TEMP/xyno-rust.nvim" >> "$GITHUB_ENV"
+          echo "XYNO_IMPORTS_DIR=$RUNNER_TEMP/xyno-imports.nvim" >> "$GITHUB_ENV"
+
+      - name: Fetch snacks.nvim (pinned commit)
+        run: |
+          git init -q "$RUNNER_TEMP/snacks.nvim"
+          git -C "$RUNNER_TEMP/snacks.nvim" fetch -q --depth 1 https://github.com/folke/snacks.nvim.git "${SNACKS_SHA}"
+          git -C "$RUNNER_TEMP/snacks.nvim" checkout -q FETCH_HEAD
+          echo "XYNO_SNACKS_DIR=$RUNNER_TEMP/snacks.nvim" >> "$GITHUB_ENV"
+
+      - name: Add rust-analyzer and fetch the fixture crates
+        run: |
+          rustup component add rust-analyzer
+          cargo fetch --manifest-path tests/fixtures/deps-lab/Cargo.toml
+          cargo fetch --manifest-path tests/fixtures/deps-lab-nofeature/Cargo.toml
+
+      - name: Build the tree-sitter rust parser (pinned commit)
+        run: |
+          d="$RUNNER_TEMP/ts-rust"
+          git init -q "$d"
+          git -C "$d" fetch -q --depth 1 https://github.com/tree-sitter/tree-sitter-rust "${TS_RUST_SHA}"
+          git -C "$d" checkout -q FETCH_HEAD
+          mkdir -p "$RUNNER_TEMP/ts/parser"
+          cc -shared -fPIC -O2 -I "$d/src" "$d/src/parser.c" "$d/src/scanner.c" -o "$RUNNER_TEMP/ts/parser/rust.so"
+
+      - name: Specs
+        run: XYNO_TEST_RTP="$RUNNER_TEMP/ts" nvim -l tests/run.lua
+
+      - name: Fetch lazy.nvim (pinned commit)
+        run: |
+          git init -q "$RUNNER_TEMP/lazy.nvim"
+          git -C "$RUNNER_TEMP/lazy.nvim" fetch -q --depth 1 https://github.com/folke/lazy.nvim.git "${LAZY_SHA}"
+          git -C "$RUNNER_TEMP/lazy.nvim" checkout -q FETCH_HEAD
+
+      - name: Smoke test through lazy.nvim
+        run: |
+          XYNO_LAZY="$RUNNER_TEMP/lazy.nvim" XYNO_TEST_RTP="$RUNNER_TEMP/ts" nvim --headless -u tests/e2e/init.lua -c "luafile tests/e2e/smoke.lua"
