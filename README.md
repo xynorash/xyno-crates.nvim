@@ -55,20 +55,29 @@ The code actions and the hint come from in-process language clients that start w
     features = true, -- xyno_crates.crate_features: missing-feature action, :CrateFeatures
     import = true,   -- xyno_crates.crate_import: import from a crate that is not a dependency yet
   },
+  add = {},        -- { confirm = true, typosquat = true, audit = "hint"|"run"|"off", extra_popular = {} }
 }
 ```
 
 No global keymap is set by default. `keymaps = true` maps `<leader>rA` (`:CrateAdd`, buffer-local in Rust and `Cargo.toml` buffers) and `<leader>rG` (the missing-feature fix for the cursor line, buffer-local in Rust buffers); a table maps only what you list, to the keys you choose.
 
-The modules start once per session: a second `setup()` call does not redefine their autocommands, language servers or keys.
+`setup()` can be called again: the second call replaces the first one's autocommands, commands, keys and options (a module switched off is stopped; the in-process language servers keep running and are not restarted). Invalid options (unknown module, wrong type, `add.audit` not one of `hint`/`run`/`off`) are refused as a whole with one error message and nothing changes.
 
 `vim.g.xyno_crate_check = false` switches the unknown-crate hint off. The limits live in each module's `config` table, for example `require("xyno_crates.crate_add").config`: `debounce_ms = 300`, `max_diagnostics = 50` per buffer, `cargo_timeout_ms = 180000`, `max_lines = 20000` (larger buffers get no hint). `crate_features.config` has the scan limits (`max_files`, `max_file_bytes`, `max_unused_files`, `max_unused_bytes`, `max_alts`), `crate_import.config` has `max_guesses = 3`, `min_guess_len = 3`, `poll_ms = 1000`, `reload_timeout_ms = 60000`.
+
+## Confirmation before `cargo add`
+
+Every add (`:CrateAdd` and the `Add crate X` action, which the import source uses too) shows a preview and asks first: the crate, the version (the newest one on crates.io; cargo itself picks the newest compatible with the package's `rust-version`), the features and whether the default ones stay on, the table it goes into, the downloads (total and last 90 days) and the age (first published, last updated) from the crates.io API when it answers, and the repository. The lookups reuse xyno-rust.nvim's cache; a warm preview takes a few milliseconds, a cold one one or two network round trips (measured here: 1.4 s for `serde` on this machine, 2 ms warm). Offline, the preview says so and still asks.
+
+A **typosquat warning** is shown when the name is within one edit (two for names of eight letters or more; a swap of neighbouring letters counts as one) of a popular crate, or differs only by look-alike letters (`rn`/`m`, `0`/`o`, `1`/`l`), and the crate has fewer than 2 million downloads. `-` and `_` are one spelling, as at crates.io. With a warning, the first choice is **Cancel**. Also warned: a crate first published less than 30 days ago, and a name the index does not know. Limits: the list of popular crates is a built-in list of about 250 names, not the live top of crates.io, so this is a hint and not a verdict (a squat of a crate not on the list is not caught); `add = { extra_popular = { "my-crate" } }` guards more names.
+
+If `cargo-audit` is installed the preview says so; `add = { audit = "run" }` also runs `cargo audit --json` after the add and reports the advisories that name the added crate. That check only sees what the local advisory database knows. There is no OSV query (it would send the crate name to a third-party service); `audit = "off"` removes the hint. `add = { confirm = false }` turns the question off.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `:CrateAdd [query]` | Search crates.io, pick the crate, pick its features (`default` is preselected; unticking it means `--no-default-features`), pick the target (member and kind: dependencies, dev-dependencies, build-dependencies; entries of `[workspace.dependencies]` are marked) and run `cargo add`. The line cargo wrote is reported. |
+| `:CrateAdd [query]` | Search crates.io, pick the crate, pick its features (`default` is preselected; unticking it means `--no-default-features`), pick the target (member and kind: dependencies, dev-dependencies, build-dependencies; entries of `[workspace.dependencies]` are marked) then show a preview and ask (see below) and run `cargo add`. The line cargo wrote is reported. |
 | `:CrateFeatures [crate]` | Explore the cargo features of a dependency: declared and effective features, what each unlocks (the gated public items found in the crate's source), the default set, and an "unused?" hint for a feature none of whose items appears in the workspace. Toggle one from the list: `Cargo.toml` is edited. |
 
 ## Code actions

@@ -24,7 +24,13 @@ local function stub(t, k, v)
   return orig
 end
 
+-- the confirmation before `cargo add` has its own specs (tests/crate-confirm_spec.lua)
+before_each(function()
+  ca.config.confirm = false
+end)
+
 after_each(function()
+  ca.config.confirm = true
   for i = #restores, 1, -1 do
     pcall(restores[i])
   end

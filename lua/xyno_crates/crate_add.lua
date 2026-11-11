@@ -23,12 +23,16 @@
 local M = {}
 
 local cm = require("xyno_rust.crate_meta")
+local names = require("xyno_crates.names")
 
 M.config = {
   debounce_ms = 300,
   max_diagnostics = 50, -- per buffer
   cargo_timeout_ms = 180000,
   max_lines = 20000, -- the scan walks the whole tree: larger buffers (generated code) are skipped
+  confirm = true, -- show a preview (crate, version, features, downloads, age, typosquat warning) and ask before `cargo add`
+  typosquat = true, -- compare the name with popular crates in that preview
+  audit = "hint", -- "hint" (say so when cargo-audit is installed) | "run" (also run `cargo audit` after the add) | "off"
 }
 
 M.ns = vim.api.nvim_create_namespace("xyno-crates")
@@ -396,7 +400,6 @@ end
 
 -- ----------------------------------------------------------- cargo add
 
-local FEATURE_PAT = "^[A-Za-z0-9_.+-]+$"
 
 --- spec = { name, features = {}, default_features = true|false, kind =
 --- "normal"|"dev"|"build", package = member name, offline = bool }.
@@ -425,10 +428,8 @@ function M.build_argv(spec)
     argv[#argv + 1] = "--no-default-features"
   end
   if spec.features and #spec.features > 0 then
-    for _, f in ipairs(spec.features) do
-      if type(f) ~= "string" or not f:match(FEATURE_PAT) then
-        return nil, "invalid feature name"
-      end
+    if not names.valid_features(spec.features) then
+      return nil, "invalid feature name"
     end
     vim.list_extend(argv, { "-F", table.concat(spec.features, ",") })
   end
@@ -520,8 +521,54 @@ function M.run_add(root, spec, cb)
     -- save would, or its stale E0433 / "cannot find derive macro" errors stay for minutes
     pcall(require("xyno_rust.rust_restart").manifest_saved, spec.manifest or (root .. "/Cargo.toml"))
     refresh_all()
+    if M.config.audit == "run" and vim.fn.executable("cargo-audit") == 1 then
+      M.audit(root, spec.name)
+    end
     if cb then
       cb(true, msg, line)
+    end
+  end)
+end
+
+--- Confirm (config.confirm), then run_add. cb(ok, message); a cancelled add is cb(false, "cancelled").
+function M.confirm_and_add(root, spec, cb)
+  if not M.config.confirm then
+    return M.run_add(root, spec, cb)
+  end
+  require("xyno_crates.vet").preview(spec, { typosquat = M.config.typosquat, audit = M.config.audit ~= "off" }, function(preview)
+    M.ui.confirm(preview, function(yes)
+      if not yes then
+        notify("cargo add " .. spec.name .. " cancelled")
+        return cb and cb(false, "cancelled")
+      end
+      M.run_add(root, spec, cb)
+    end)
+  end)
+end
+
+--- Run `cargo audit --json` on the workspace lockfile (async) and report the advisories that
+--- concern `name`. cb(count) or cb(nil, err).
+function M.audit(root, name, cb)
+  cm.exec({ "cargo", "audit", "--json" }, { cwd = root, timeout = M.config.cargo_timeout_ms }, function(r)
+    -- cargo audit exits 1 when it found vulnerabilities and still prints the report
+    local ok, j = pcall(vim.json.decode, r.stdout or "", { luanil = { object = true, array = true } })
+    if not ok or type(j) ~= "table" then
+      notify("cargo audit gave no report: " .. vim.trim(r.stderr or ""):sub(1, 200), vim.log.levels.WARN)
+      return cb and cb(nil, "no report")
+    end
+    local hits = {}
+    for _, v in ipairs(j.vulnerabilities and j.vulnerabilities.list or {}) do
+      if v.package and v.package.name == name then
+        hits[#hits + 1] = ("%s %s"):format(v.advisory and v.advisory.id or "?", v.advisory and v.advisory.title or "")
+      end
+    end
+    if #hits > 0 then
+      notify(("cargo audit: %d advisor%s for %s:\n  %s"):format(#hits, #hits == 1 and "y" or "ies", name, table.concat(hits, "\n  ")), vim.log.levels.WARN)
+    else
+      notify("cargo audit: no advisories for " .. name)
+    end
+    if cb then
+      cb(#hits)
     end
   end)
 end
@@ -560,6 +607,21 @@ function M.ui.pick(spec, cb)
       end
     end,
   })
+end
+
+--- The confirmation before `cargo add`. preview = { lines, warnings }; cb(true) to go ahead.
+--- With a warning the safe answer comes first, so <CR> cancels.
+function M.ui.confirm(preview, cb)
+  local add, cancel = { "Add the crate", "add" }, { "Cancel", "cancel" }
+  local items = #preview.warnings > 0 and { cancel, add } or { add, cancel }
+  vim.ui.select(items, {
+    prompt = table.concat(preview.lines, "\n"),
+    format_item = function(i)
+      return i[1]
+    end,
+  }, function(choice)
+    cb(choice ~= nil and choice[2] == "add")
+  end)
 end
 
 function M.ui.input(prompt, cb)
@@ -649,7 +711,7 @@ local function choose_and_add(name, info, ctx, cb)
     local items = M.target_items(ctx.meta, ctx.meta.root or ctx.root, name, ctx.current)
     M.ui.pick({ title = "Add " .. name .. " to", items = items }, function(sel)
       local t = sel[1]
-      M.run_add(ctx.root, {
+      M.confirm_and_add(ctx.root, {
         name = name,
         features = features,
         default_features = default_on,
@@ -760,7 +822,7 @@ function M.add_direct(bufnr, name, cb)
     end
     local rel = file:sub(#member.dir + 2)
     local kind = (rel:match("^tests/") or rel:match("^benches/") or rel:match("^examples/")) and "dev" or "normal"
-    M.run_add(root, { name = name, kind = kind, package = member.name, manifest = member.manifest_path }, function(ok, msg)
+    M.confirm_and_add(root, { name = name, kind = kind, package = member.name, manifest = member.manifest_path }, function(ok, msg)
       if ok then
         M.schedule(bufnr, 50)
       end
@@ -888,13 +950,39 @@ end
 -- ---------------------------------------------------------------- setup
 
 local did_setup = false
+local mapped = {} -- buf -> lhs of the buffer-local key set by setup
+local generation = 0 -- bumped by every setup/stop: a deferred step of an older call does nothing
 
---- opts: { commands = true, keymap = false | lhs } (see xyno_crates.setup). The first call wins.
+--- Undo what setup() installed except the language server entry: autocommands, command,
+--- keys. M.stop() also stops the in-process server.
+local function teardown()
+  generation = generation + 1
+  pcall(vim.api.nvim_del_augroup_by_name, "xyno-crates-add")
+  pcall(vim.api.nvim_del_user_command, "CrateAdd")
+  for b, lhs in pairs(mapped) do
+    if vim.api.nvim_buf_is_valid(b) then
+      pcall(vim.keymap.del, "n", lhs, { buffer = b })
+    end
+  end
+  mapped = {}
+end
+
+function M.stop()
+  teardown()
+  pcall(vim.lsp.enable, M.server_name, false)
+  did_setup = false
+end
+
+--- opts: { commands = true, keymap = false | lhs } (see xyno_crates.setup). Safe to call again:
+--- the second call replaces the first one's autocommands, command and key (the language
+--- server entry is kept, not restarted).
 function M.setup(opts)
   if did_setup then
-    return
+    teardown()
   end
   did_setup = true
+  generation = generation + 1
+  local my_generation = generation
   opts = opts or {}
   local keymap = opts.keymap
 
@@ -973,6 +1061,7 @@ function M.setup(opts)
   local function map(buf)
     if type(keymap) == "string" then
       vim.keymap.set("n", keymap, "<cmd>CrateAdd<cr>", { buffer = buf, desc = "Add crate (crates.io search)" })
+      mapped[buf] = keymap
     end
   end
   vim.api.nvim_create_autocmd("FileType", {
@@ -985,6 +1074,9 @@ function M.setup(opts)
     end,
   })
   vim.schedule(function()
+    if my_generation ~= generation then
+      return
+    end
     for _, b in ipairs(vim.api.nvim_list_bufs()) do
       if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].filetype == "rust" then
         map(b)

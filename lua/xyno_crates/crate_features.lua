@@ -1361,17 +1361,7 @@ local function manifest_buffer_modified(manifest)
   return b > 0 and vim.api.nvim_buf_is_loaded(b) and vim.bo[b].modified
 end
 
-local function valid_features(list)
-  if type(list) ~= "table" or #list == 0 then
-    return false
-  end
-  for _, f in ipairs(list) do
-    if type(f) ~= "string" or not f:match("^[A-Za-z0-9_.-]+$") or #f > 64 then
-      return false
-    end
-  end
-  return true
-end
+local valid_features = require("xyno_crates.names").valid_features
 
 local function after_edit(manifest)
   cm.invalidate()
@@ -1984,19 +1974,39 @@ end
 local did_setup = false
 
 local keymap = false -- false | lhs: the key of the cursor-line fix (opts.keymaps.fix)
+local mapped = {} -- buf -> lhs of the fix key set by setup
 
 --- What a Rust buffer gets: the in-process client and, when a key is configured, the fix key.
 function M.on_rust_buffer(buf)
   M.attach(buf)
   if type(keymap) == "string" then
     vim.keymap.set("n", keymap, M.fix_at_cursor, { buffer = buf, desc = "Fix missing crate feature" })
+    mapped[buf] = keymap
   end
 end
 
---- opts: { commands = true, keymap = false | lhs } (see xyno_crates.setup). The first call wins.
+local function teardown()
+  pcall(vim.api.nvim_del_augroup_by_name, "xyno_crates_features")
+  pcall(vim.api.nvim_del_user_command, "CrateFeatures")
+  for b, lhs in pairs(mapped) do
+    if vim.api.nvim_buf_is_valid(b) then
+      pcall(vim.keymap.del, "n", lhs, { buffer = b })
+    end
+  end
+  mapped = {}
+  keymap = false
+end
+
+function M.stop()
+  teardown()
+  did_setup = false
+end
+
+--- opts: { commands = true, keymap = false | lhs } (see xyno_crates.setup). Safe to call again:
+--- the second call replaces the first one's autocommands, command and key.
 function M.setup(opts)
   if did_setup then
-    return
+    teardown()
   end
   did_setup = true
   opts = opts or {}

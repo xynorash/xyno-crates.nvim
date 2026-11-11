@@ -274,9 +274,17 @@ end
 local unregister
 function M.setup()
   if unregister then
-    return
+    return -- the source is registered; setup() again changes nothing here
   end
   unregister = require("xyno_imports.engine").register_source(M.source, { async = true })
+end
+
+--- Remove the import source again (xyno_crates.setup{ modules = { import = false } } after a first setup).
+function M.stop()
+  if unregister then
+    pcall(unregister)
+    unregister = nil
+  end
 end
 
 return M
