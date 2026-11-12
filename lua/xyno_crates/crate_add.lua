@@ -22,6 +22,11 @@
 -- feature names and package names are validated before they reach one.
 local M = {}
 
+--- Registry-provided text as one inert line (xyno_crates.vet.sanitize).
+local function one_line(s, n)
+  return require("xyno_crates.vet").sanitize(s, n)
+end
+
 local cm = require("xyno_rust.crate_meta")
 local names = require("xyno_crates.names")
 
@@ -559,7 +564,7 @@ function M.audit(root, name, cb)
     local hits = {}
     for _, v in ipairs(j.vulnerabilities and j.vulnerabilities.list or {}) do
       if v.package and v.package.name == name then
-        hits[#hits + 1] = ("%s %s"):format(v.advisory and v.advisory.id or "?", v.advisory and v.advisory.title or "")
+        hits[#hits + 1] = ("%s %s"):format(one_line(v.advisory and v.advisory.id or "?", 30), one_line(v.advisory and v.advisory.title or "", 120))
       end
     end
     if #hits > 0 then
@@ -646,11 +651,6 @@ local function human(n)
   return tostring(n)
 end
 
-local function one_line(s, n)
-  s = tostring(s or ""):gsub("%s+", " ")
-  return #s > n and (s:sub(1, n - 1) .. "...") or s
-end
-
 --- Features of `info` as picker items: `default` first (preselected), then
 --- alphabetical, each with its dependency list.
 function M.feature_items(info)
@@ -664,10 +664,11 @@ function M.feature_items(info)
   local items = {}
   for _, n in ipairs(names) do
     local deps = info.features[n]
-    local d = #deps > 0 and table.concat(deps, ", ") or "(no dependencies)"
-    local label = n == "default" and "default  (on by default: deselect for --no-default-features)" or n
+    local d = #deps > 0 and one_line(table.concat(deps, ", "), 160) or "(no dependencies)"
+    local shown = one_line(n, 64) -- display only: `feature` stays the registry's spelling (names.valid_feature vets it before cargo add)
+    local label = n == "default" and "default  (on by default: deselect for --no-default-features)" or shown
     items[#items + 1] = {
-      text = n .. " " .. d,
+      text = shown .. " " .. d,
       display = ("%-24s %s"):format(label, d),
       feature = n,
       preselect = n == "default",
@@ -727,7 +728,7 @@ local function choose_and_add(name, info, ctx, cb)
     return target_step({}, true)
   end
   M.ui.pick({
-    title = ("Features of %s %s  (Tab: toggle, Enter: confirm)"):format(name, info.newest or ""),
+    title = ("Features of %s %s  (Tab: toggle, Enter: confirm)"):format(one_line(name, 64), one_line(info.newest or "", 30)),
     items = fitems,
     multi = true,
   }, function(sel)
@@ -766,8 +767,8 @@ function M.add(query, cb)
       local items = {}
       for _, c in ipairs(list) do
         items[#items + 1] = {
-          text = c.name .. " " .. (c.description or ""),
-          display = ("%-26s %-10s %7s  %s"):format(c.name, c.version or "?", human(c.downloads), one_line(c.description, 80)),
+          text = one_line(c.name, 80) .. " " .. one_line(c.description, 200),
+          display = ("%-26s %-10s %7s  %s"):format(one_line(c.name, 40), one_line(c.version or "?", 20), human(c.downloads), one_line(c.description, 80)),
           crate = c,
         }
       end

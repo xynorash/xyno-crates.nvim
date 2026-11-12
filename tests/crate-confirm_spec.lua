@@ -180,6 +180,147 @@ describe("preview", function()
   end)
 end)
 
+-- ----------------------------------------------------------------- hostile registry strings
+-- Everything crates.io (or a mirror) sends is attacker-controlled text: a malicious crate page must not
+-- be able to add lines, colour, move the cursor, retitle the terminal or fake an "OK" in the confirmation.
+local ESC, BEL = "\27", "\7"
+local HOSTILE = table.concat({
+  "https://example.test/x",
+  "\n  OK: audited, no advisories, safe to add",
+  "\r  WARNING: none",
+  ESC .. "[2J" .. ESC .. "[31mred" .. ESC .. "[0m",
+  ESC .. "]0;pwned" .. BEL,
+  ESC .. "]8;;https://evil.test" .. ESC .. "\\click",
+  "\226\128\174gpj.exe", -- U+202E right-to-left override
+  "\226\129\166iso\226\129\169", -- U+2066 .. U+2069 isolates
+  "\194\133next-line\194\155csi", -- C1 controls NEL / CSI
+  "\226\128\168ls\226\128\169ps", -- U+2028 / U+2029
+  "zero\226\128\139width\239\187\191bom",
+  "\0nul\127del",
+  string.rep("A", 5000),
+}, " ")
+
+local function bad_bytes(text)
+  local found = {}
+  for _, pat in ipairs({
+    { "ESC", "\27" }, { "BEL", "\7" }, { "NUL", "%z" }, { "C0", "[\1-\8\11-\31\127]" }, { "CR", "\r" },
+    { "RLO etc", "\226\128[\142\143\168-\174]" }, { "isolates", "\226\129[\166-\169\160]" },
+    { "ZW", "\226\128[\139-\141]" }, { "BOM", "\239\187\191" }, { "C1", "\194[\128-\159]" },
+  }) do
+    if text:find(pat[2]) then
+      found[#found + 1] = pat[1]
+    end
+  end
+  return found
+end
+
+describe("hostile registry strings", function()
+  it("sanitize: control characters, escape sequences and bidi overrides are removed, whitespace collapsed, length capped", function()
+    local s = vet.sanitize(HOSTILE, 100)
+    H.eq({}, bad_bytes(s), "no control / bidi bytes survive")
+    H.no_match(s, "\n", true)
+    H.ok(#s <= 103, "capped, got " .. #s)
+    H.no_match(s, "pwned", true, "an OSC title sequence is dropped with its payload")
+    H.no_match(s, "evil.test", true, "an OSC 8 hyperlink target is dropped")
+    H.eq("a b c", vet.sanitize("a \t\n  b\r\n c"))
+    H.eq("", vet.sanitize(nil))
+    H.eq("42", vet.sanitize(42))
+    H.eq("caf\195\169 \226\156\147", vet.sanitize("caf\195\169 \226\156\147"), "ordinary UTF-8 is kept")
+    H.eq({}, bad_bytes(vet.sanitize("ok\255\254bad\192\175utf8")), "invalid UTF-8 does not pass through")
+  end)
+
+  it("a hostile repository / version cannot add lines, escapes or a fake OK to the confirmation", function()
+    local r = vet.render({
+      spec = { name = "serd" },
+      info = { newest = "1.0.0\n  OK: verified" .. ESC .. "[1m", repository = HOSTILE },
+      meta = { downloads = 5, created_at = ago(400 * 86400), repository = HOSTILE },
+      typo = vet.typosquat("serd"),
+      now = NOW,
+    })
+    for i, l in ipairs(r.lines) do
+      H.not_ok(l:find("\n", 1, true), "line " .. i .. " has a newline")
+      H.eq({}, bad_bytes(l), "line " .. i)
+      H.ok(#l < 400, "line " .. i .. " is bounded (" .. #l .. ")")
+    end
+    local text = table.concat(r.lines, "\n")
+    H.no_match(text, "\n  OK", true)
+    H.no_match(text, "pwned", true)
+    -- our own warnings contain no registry text at all, and there are exactly the expected ones
+    H.eq(1, #r.warnings, "the typosquat warning count does not change with the payload")
+    for _, w in ipairs(r.warnings) do
+      H.no_match(w, "example.test", true)
+      H.no_match(w, "OK", true)
+    end
+    local warn_lines = vim.tbl_filter(function(l)
+      return l:match("^  WARNING: ")
+    end, r.lines)
+    H.eq(#r.warnings, #warn_lines, "only the plugin's own warnings carry the WARNING prefix")
+  end)
+
+  it("registry text sits in a labelled, visually separated block; every line of it is prefixed", function()
+    local r = vet.render({
+      spec = { name = "itoa" },
+      info = { newest = "1.0.15", repository = "https://github.com/dtolnay/itoa" },
+      meta = { downloads = 1000, created_at = ago(400 * 86400) },
+      now = NOW,
+    })
+    local text = table.concat(r.lines, "\n")
+    H.match(text, "from crates.io", true)
+    H.match(text, "unverified", true)
+    local in_block, n = false, 0
+    for _, l in ipairs(r.lines) do
+      if l:find("from crates.io", 1, true) and l:find("unverified", 1, true) then
+        in_block = true
+      elseif in_block and l == "" then
+        in_block = false
+      elseif in_block then
+        n = n + 1
+        H.match(l, "^  | ", false, "block line: " .. l)
+      end
+    end
+    H.ok(n >= 2, "version and repository are inside the block")
+    local outside = vim.tbl_filter(function(l)
+      return l:find("github.com", 1, true) and not l:match("^  | ")
+    end, r.lines)
+    H.eq({}, outside, "the repository appears only inside the block")
+  end)
+
+  it("a repository that is not a plain http(s) URL is flagged, a plain one is not", function()
+    for _, url in ipairs({ "javascript:alert(1)", "file:///etc/passwd", "https://user:pw@host.test/x", "ssh://git@host/x" }) do
+      local r = vet.render({ spec = { name = "itoa" }, info = { newest = "1.0.0", repository = url }, now = NOW })
+      H.match(table.concat(r.lines, "\n"), "not a plain http(s) URL", true, url)
+    end
+    local r = vet.render({ spec = { name = "itoa" }, info = { newest = "1.0.0", repository = "https://github.com/dtolnay/itoa" }, now = NOW })
+    H.no_match(table.concat(r.lines, "\n"), "not a plain http(s) URL", true)
+  end)
+
+  it("the same payload reaches the question only as sanitised text (preview -> vim.ui.select prompt)", function()
+    fake_lookup({ newest = "1.0.0", repository = HOSTILE }, { downloads = 5, created_at = ago(400 * 86400) })
+    local prompt
+    stub(vim.ui, "select", function(items, opts, cb)
+      prompt = opts.prompt
+      cb(items[1])
+    end)
+    local done
+    ca.confirm_and_add(vim.uv.cwd(), { name = "serd" }, function()
+      done = true
+    end)
+    H.wait_for(function()
+      return prompt ~= nil
+    end, 2000, "the question was asked")
+    H.eq({}, bad_bytes(prompt))
+    H.no_match(prompt, "\n  OK", true)
+  end)
+
+  it("feature picker items, search results and audit titles are sanitised too", function()
+    local items = ca.feature_items({ features = { default = { "std" }, ["x" .. ESC .. "[2Jy"] = { "dep\nOK" .. ESC .. "]0;t" .. BEL } } })
+    for _, it in ipairs(items) do
+      H.eq({}, bad_bytes(it.display .. it.text), it.display)
+      H.not_ok((it.display .. it.text):find("\n", 1, true))
+    end
+  end)
+end)
+
 describe("confirm before cargo add", function()
   local function ws()
     local root = H.tmpdir() .. "/w"

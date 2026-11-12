@@ -258,6 +258,98 @@ function M.fetch_meta(name, cb)
   end)
 end
 
+-- -------------------------------------------------------------- hostile text
+
+-- Everything that comes from the registry (crates.io or a mirror) is attacker-controlled text. It is
+-- never put into the confirmation as is: sanitize() leaves one line of plain printable text.
+local BIDI_AND_INVISIBLE = {
+  "\226\128[\139-\143]", -- U+200B..U+200F zero-width space/joiners, LRM, RLM
+  "\226\128[\170-\174]", -- U+202A..U+202E embeddings and overrides
+  "\226\129[\160-\175]", -- U+2060..U+206F word joiner, isolates, deprecated format characters
+  "\216\156", -- U+061C Arabic letter mark
+  "\239\187\191", -- U+FEFF
+  "\225\160\142", -- U+180E Mongolian vowel separator
+  "\239\191[\185-\187]", -- U+FFF9..U+FFFB interlinear annotation
+}
+
+--- Keeps the valid UTF-8 sequences of `s`; every other byte becomes "?".
+local function valid_utf8(s)
+  if not s:find("[\128-\255]") then
+    return s
+  end
+  local out, i, n = {}, 1, #s
+  while i <= n do
+    local c = s:byte(i)
+    local len = c < 0x80 and 1 or (c >= 0xC2 and c <= 0xDF) and 2 or (c >= 0xE0 and c <= 0xEF) and 3 or (c >= 0xF0 and c <= 0xF4) and 4 or 0
+    local seq = len > 0 and s:sub(i, i + len - 1) or nil
+    local ok = seq ~= nil and #seq == len
+    for k = 2, len do
+      ok = ok and (seq:byte(k) or 0) >= 0x80 and seq:byte(k) <= 0xBF
+    end
+    if ok and len == 3 then
+      local b1, b2 = seq:byte(1), seq:byte(2)
+      ok = not (b1 == 0xE0 and b2 < 0xA0) and not (b1 == 0xED and b2 > 0x9F) -- overlong, surrogates
+    elseif ok and len == 4 then
+      local b1, b2 = seq:byte(1), seq:byte(2)
+      ok = not (b1 == 0xF0 and b2 < 0x90) and not (b1 == 0xF4 and b2 > 0x8F)
+    end
+    if ok then
+      out[#out + 1] = seq
+      i = i + len
+    else
+      out[#out + 1] = "?"
+      i = i + 1
+    end
+  end
+  return table.concat(out)
+end
+
+--- One line of inert text from an untrusted value: terminal escape sequences (CSI, OSC incl. hyperlinks,
+--- other ESC sequences) are dropped together with their payload, control characters, C1 controls, bidi
+--- overrides / isolates, zero-width and format characters are removed, every run of whitespace
+--- (newlines, NBSP, U+2028/9) becomes one space, invalid UTF-8 becomes "?", and the result is cut to
+--- `max` bytes (default 120) at a character boundary with "...". Never returns nil.
+function M.sanitize(value, max)
+  local s = value == nil and "" or tostring(value)
+  max = max or 120
+  -- a long input is cut first: the patterns below stay cheap on a megabyte of payload
+  if #s > max * 8 then
+    s = s:sub(1, max * 8)
+  end
+  s = s:gsub("\27%][^\7\27]*\7", "") -- OSC ... BEL
+  s = s:gsub("\27%][^\7\27]*\27\\", "") -- OSC ... ST
+  s = s:gsub("\27%][^\7\27]*", "") -- unterminated OSC
+  s = s:gsub("\27[P^_X][^\27]*\27\\", "") -- DCS / PM / APC / SOS
+  s = s:gsub("\27%[[0-?]*[ -/]*[@-~]", "") -- CSI
+  s = s:gsub("\27[ -/]*[0-~]", "") -- two-byte and nF sequences
+  s = s:gsub("\194[\133\160]", " ") -- NEL, NBSP are whitespace
+  s = s:gsub("\226\128[\168\169]", " ") -- U+2028, U+2029
+  s = s:gsub("\226\128[\128-\138]", " ") -- U+2000..U+200A spaces
+  s = s:gsub("\226\128\175", " "):gsub("\226\129\159", " "):gsub("\227\128\128", " ")
+  s = s:gsub("[%z\1-\8\14-\31\127]", "")
+  s = s:gsub("\194[\128-\159]", "") -- C1 controls (CSI 0x9B, OSC 0x9D, ...)
+  for _, pat in ipairs(BIDI_AND_INVISIBLE) do
+    s = s:gsub(pat, "")
+  end
+  s = s:gsub("[%s]+", " ")
+  s = valid_utf8(s)
+  s = vim.trim(s)
+  if #s > max then
+    local cut = max
+    while cut > 0 and s:byte(cut + 1) and s:byte(cut + 1) >= 0x80 and s:byte(cut + 1) < 0xC0 do
+      cut = cut - 1
+    end
+    s = s:sub(1, cut) .. "..."
+  end
+  return s
+end
+
+--- Whether `url` (already sanitised) is a plain http(s) URL: no credentials, no spaces, no other scheme.
+local function plain_url(url)
+  local rest = url:match("^https?://([^/%s]*)")
+  return rest ~= nil and not rest:find("@", 1, true) and not url:find("%s")
+end
+
 -- -------------------------------------------------------------- preview
 
 --- The text of the confirmation. `p` = { spec, info (cm.info_async result or nil), meta
@@ -269,11 +361,12 @@ function M.render(p)
   local function add(l)
     lines[#lines + 1] = l
   end
-  add(("cargo add %s"):format(spec.name))
-  add(("  version    %s"):format(info and info.newest and (info.newest .. "  (newest on crates.io; cargo picks the newest compatible with the package's rust-version)") or "cargo picks the newest compatible release (not looked up)"))
-  local feats = spec.features and #spec.features > 0 and table.concat(spec.features, ", ") or "none"
+  add(("cargo add %s"):format(M.sanitize(spec.name, 80)))
+  local newest = info and info.newest and M.sanitize(info.newest, 40) or nil
+  add(("  version    %s"):format(newest and newest ~= "" and "newest on crates.io is listed below; cargo picks the newest compatible with the package's rust-version" or "cargo picks the newest compatible release (not looked up)"))
+  local feats = spec.features and #spec.features > 0 and M.sanitize(table.concat(spec.features, ", "), 120) or "none"
   add(("  features   %s%s"):format(feats, spec.default_features == false and "  (default features OFF)" or "  (+ default features)"))
-  add(("  into       [%s]%s"):format(({ normal = "dependencies", dev = "dev-dependencies", build = "build-dependencies" })[spec.kind or "normal"], spec.package and (" of " .. spec.package) or ""))
+  add(("  into       [%s]%s"):format(({ normal = "dependencies", dev = "dev-dependencies", build = "build-dependencies" })[spec.kind or "normal"], spec.package and (" of " .. M.sanitize(spec.package, 80)) or ""))
   local dl = meta and meta.downloads or (info and info.downloads)
   local recent = meta and meta.recent_downloads or (info and info.recent_downloads)
   if dl then
@@ -295,10 +388,21 @@ function M.render(p)
     warns[#warns + 1] = "crates.io has no (or no reachable) index entry for this name: check the spelling"
   end
   if p.typo then
-    warns[#warns + 1] = ("the name looks like the popular crate `%s` (%s): possible typosquat, check %s"):format(p.typo.similar, p.typo.why, (info and info.repository) or (meta and meta.repository) or "its repository")
+    warns[#warns + 1] = ("the name looks like the popular crate `%s` (%s): possible typosquat, check %s"):format(p.typo.similar, p.typo.why, "the repository listed below")
   end
-  if info and info.repository then
-    add("  repository " .. info.repository)
+  -- Registry text: its own labelled block, every line prefixed, so nothing in it can pass for the
+  -- plugin's own lines (WARNING, version, downloads) above and below.
+  local repo = info and info.repository or (meta and meta.repository)
+  if newest or repo then
+    add("")
+    add("  from crates.io (unverified text sent by the registry, shown as is):")
+    if newest and newest ~= "" then
+      add("  | newest version  " .. newest)
+    end
+    if repo then
+      local url = M.sanitize(repo, 160)
+      add("  | repository      " .. url .. (plain_url(url) and "" or "   (not a plain http(s) URL: do not open it)"))
+    end
   end
   if #warns > 0 then
     add("")
