@@ -114,6 +114,10 @@ The hint is rescanned after `InsertLeave`, `TextChanged`, `BufWritePost`, `BufRe
 
 Crate metadata comes from `cargo metadata` and the crates.io sparse index (through xyno-rust.nvim), cached. The unknown-crate scan walks the tree-sitter tree of the buffer, debounced. The missing-feature lookup reads the unpacked source of the dependencies (`lib.rs` and the modules it declares, behind `#[cfg(feature = "...")]`, `pub use`, `macro_rules!`). `Cargo.toml` is edited with `cargo add --features` for registry dependencies and with a careful text edit (formatting and comments kept) for the rest. Everything that comes from the network or from files (crate and feature names) is validated before it reaches a command line, and commands run as argv lists.
 
+## Layout
+
+`lua/xyno_crates/crate_features.lua` is the facade (setup, keys); the parts are `features/scan.lua` (cfg gates and the source scanner), `tables.lua` (feature closures), `suggest.lua` (diagnostics to features), `manifest.lua` (Cargo.toml edits), `action.lua` (the in-process language client) and `explorer.lua` (`:CrateFeatures`). `require("xyno_crates.crate_features")` exposes the same functions as before the split.
+
 ## Platforms
 
 - Linux: tested by the specs in this repository (`nvim -l tests/run.lua`): the scan, the picker flow with a stubbed crates.io client and `cargo add`, the manifest editor, the code actions through the in-process clients, a real snacks.nvim picker, and the flows against the real crates.io, cargo and rust-analyzer on small fixture crates (they skip with a printed reason when the network, cargo, rust-analyzer or the registry crates are not available).
