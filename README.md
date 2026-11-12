@@ -13,7 +13,7 @@ Adding a dependency means leaving the editor for crates.io, copying a name, find
 ## Requirements
 
 - Neovim 0.12+
-- [xyno-rust.nvim](https://github.com/xynorash/xyno-rust.nvim) (crate metadata, code actions, file helpers, server restart after a manifest change) and [xyno-imports.nvim](https://github.com/xynorash/xyno-imports.nvim) (the import engine the crate import plugs into). Both are checked in `setup()`: without them you get one error line naming the missing plugin and nothing starts. xyno-imports.nvim is only needed while the `add` or `import` module is on.
+- [xyno-rust.nvim](https://github.com/xynorash/xyno-rust.nvim) (crate metadata, code actions, file helpers, server restart after a manifest change) and [xyno-imports.nvim](https://github.com/xynorash/xyno-imports.nvim) (the import engine the crate import plugs into). Both are checked in `setup()`: without them you get one error line naming the missing plugin and nothing starts. xyno-imports.nvim is only needed while the `add` or `import` module is on. `setup()` also checks the API version (`require("xyno_rust").compatible(require("xyno_crates").requires_rust_api)`, now `1.1`): a xyno-rust.nvim with another major or an older minor gives one error line naming the fix, and nothing starts. The CI workflow fetches the dependencies by tag (`XYNO_RUST_REF`, `XYNO_IMPORTS_REF`), never `main`; pin your own plugin manager the same way (`tag = "v0.2.0"` or a commit) so a breaking major cannot arrive unannounced.
 - `cargo` in `$PATH` (`cargo add`, `cargo metadata`)
 - the tree-sitter `rust` parser (the unknown-crate scan)
 - network access to crates.io for the search (the sparse index and a cache are used where possible)

@@ -32,6 +32,24 @@ local ADD_KEYS = {
   extra_popular = "table",
 }
 
+--- The xyno-rust.nvim API this plugin was written against (see xyno_rust.compatible).
+M.requires_rust_api = "1.1"
+
+--- Fails with one clear line when xyno-rust.nvim is too old or too new for this plugin.
+local function rust_api_ok(name)
+  local ok, rust = pcall(require, "xyno_rust")
+  if not ok or type(rust.compatible) ~= "function" then
+    vim.notify(name .. ": the installed xyno-rust.nvim is too old to say which API it has (needs API " .. M.requires_rust_api .. "): update xyno-rust.nvim", vim.log.levels.ERROR)
+    return false
+  end
+  local good, why = rust.compatible(M.requires_rust_api)
+  if not good then
+    vim.notify(name .. ": " .. why, vim.log.levels.ERROR)
+    return false
+  end
+  return true
+end
+
 --- Check the options; returns the problems (the call goes on with what is valid).
 local function validate(opts)
   local problems = {}
@@ -92,6 +110,9 @@ function M.setup(opts)
       vim.notify("xyno-crates: needs " .. dep.plugin .. ", which is not installed", vim.log.levels.ERROR)
       return
     end
+  end
+  if not rust_api_ok("xyno-crates") then
+    return
   end
   local keys = opts.keymaps and (opts.keymaps == true and M.default_keymaps or opts.keymaps) or {}
   local add = require("xyno_crates.crate_add")

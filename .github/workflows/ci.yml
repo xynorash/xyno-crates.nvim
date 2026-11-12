@@ -9,6 +9,8 @@ permissions:
   contents: read
 
 env:
+  XYNO_RUST_REF: v0.2.0 # xyno-rust.nvim tag with API 1.1 (the API this plugin pins, see requires_rust_api); never main
+  XYNO_IMPORTS_REF: v0.2.0 # xyno-imports.nvim tag; never main
   NVIM_VERSION: v0.12.5
   NVIM_SHA256: bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875
   LAZY_SHA: 85c7ff3711b730b4030d03144f6db6375044ae82 # lazy.nvim v11.17.5
@@ -35,8 +37,9 @@ jobs:
       - name: Fetch the dependencies (xyno-rust.nvim, xyno-imports.nvim)
         run: |
           for name in xyno-rust.nvim xyno-imports.nvim; do
+            ref=$XYNO_RUST_REF; [ "$name" = xyno-imports.nvim ] && ref=$XYNO_IMPORTS_REF
             git init -q "$RUNNER_TEMP/$name"
-            git -C "$RUNNER_TEMP/$name" fetch -q --depth 1 "https://github.com/xynorash/$name.git" main
+            git -C "$RUNNER_TEMP/$name" fetch -q --depth 1 "https://github.com/xynorash/$name.git" "refs/tags/$ref"
             git -C "$RUNNER_TEMP/$name" checkout -q FETCH_HEAD
           done
           echo "XYNO_RUST_DIR=$RUNNER_TEMP/xyno-rust.nvim" >> "$GITHUB_ENV"
