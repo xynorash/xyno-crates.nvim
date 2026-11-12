@@ -295,6 +295,7 @@ local function after_edit(manifest)
   cm.invalidate()
   -- the edit did not go through a buffer save: restart bacon-ls like a save of Cargo.toml would
   pcall(require("xyno_rust.rust_restart").manifest_saved, manifest)
+  require("xyno_crates.trust_rehash").rehash(nil, { manifest })
   -- an open, unmodified Cargo.toml buffer picks the new text up
   pcall(vim.cmd, "silent! checktime")
 end

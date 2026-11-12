@@ -379,6 +379,32 @@ local function make_flow_ws()
 end
 
 describe("crate_add :CrateAdd flow (stubbed crates.io and cargo)", function()
+  it("the editor's own cargo add does not make the trusted workspace ask again (trust is re-recorded)", function()
+    local ok_t, trust = pcall(require, "xyno_rust.trust")
+    if not ok_t or type(trust.rehash) ~= "function" then
+      return H.skip_file("xyno_rust.trust has no rehash (older xyno-rust.nvim)")
+    end
+    local root = make_flow_ws()
+    trust.trust(root)
+    H.ok(trust.is_trusted(root))
+    fake_registry()
+    fake_cargo(function()
+      write(
+        root .. "/app/Cargo.toml",
+        '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nitoa.workspace = true\n'
+      )
+      return { code = 0, stdout = "", stderr = "    Adding itoa\n" }
+    end)
+    script_ui({})
+    H.ok(run_add("itoa"))
+    H.ok(trust.is_trusted(root), "the manifest cargo add wrote is the editor's own edit")
+    H.is_nil(trust.drift(root))
+    -- a pulled build.rs is still noticed
+    write(root .. "/app/build.rs", "fn main() {}\n")
+    H.not_ok(trust.is_trusted(root))
+    trust.revoke(root)
+  end)
+
   it("shows name, version, downloads and description; features with their dependency lists", function()
     make_flow_ws()
     fake_registry()

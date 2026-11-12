@@ -544,6 +544,11 @@ function M.run_add(root, spec, cb)
     -- no BufWritePost ran for this edit: restart bacon-ls (and show "deps resolving") like a
     -- save would, or its stale E0433 / "cannot find derive macro" errors stay for minutes
     pcall(require("xyno_rust.rust_restart").manifest_saved, spec.manifest or (root .. "/Cargo.toml"))
+    -- ... and the workspace trust of xyno-rust.nvim must not ask again for the editor's own edit
+    require("xyno_crates.trust_rehash").rehash(
+      root,
+      { spec.manifest or (root .. "/Cargo.toml"), root .. "/Cargo.toml" }
+    )
     refresh_all()
     if M.config.audit == "run" and vim.fn.executable("cargo-audit") == 1 then
       M.audit(root, spec.name)
