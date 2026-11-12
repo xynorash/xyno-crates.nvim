@@ -65,6 +65,18 @@ No global keymap is set by default. `keymaps = true` maps `<leader>rA` (`:CrateA
 
 `vim.g.xyno_crate_check = false` switches the unknown-crate hint off. The limits live in each module's `config` table, for example `require("xyno_crates.crate_add").config`: `debounce_ms = 300`, `max_diagnostics = 50` per buffer, `cargo_timeout_ms = 180000`, `max_lines = 20000` (larger buffers get no hint). `crate_features.config` has the scan limits (`max_files`, `max_file_bytes`, `max_unused_files`, `max_unused_bytes`, `max_alts`), `crate_import.config` has `max_guesses = 3`, `min_guess_len = 3`, `poll_ms = 1000`, `reload_timeout_ms = 60000`.
 
+| option | default | meaning |
+| --- | --- | --- |
+| `commands` | `true` | define `:CrateAdd` and `:CrateFeatures` |
+| `keymaps` | `false` | `true` or a table of the keys you want |
+| `modules.add` / `features` / `import` | `true` | switch a module off (it is stopped, the others go on) |
+| `add.confirm` | `true` | preview and ask before `cargo add` |
+| `add.typosquat` | `true` | warn about names close to a popular crate |
+| `add.audit` | `"hint"` | `"hint"`, `"run"` (run cargo-audit) or `"off"` |
+| `add.extra_popular` | `{}` | more crate names the typosquat check compares against |
+
+Options are validated: a wrong type or unknown key gives one error line naming every problem and nothing is changed. Highlights: the pickers are snacks.nvim's (or `vim.ui.select` without it) and the confirmation is a `vim.ui.select`; this plugin draws no window or highlight of its own, so there are no `XynoCrates*` groups and everything follows your UI plugin and colorscheme.
+
 ## Confirmation before `cargo add`
 
 Every add (`:CrateAdd` and the `Add crate X` action, which the import source uses too) shows a preview and asks first: the crate, the version (the newest one on crates.io; cargo itself picks the newest compatible with the package's `rust-version`), the features and whether the default ones stay on, the table it goes into, the downloads (total and last 90 days) and the age (first published, last updated) from the crates.io API when it answers, and the repository. The lookups reuse xyno-rust.nvim's cache; a warm preview takes a few milliseconds, a cold one one or two network round trips (measured here: 1.4 s for `serde` on this machine, 2 ms warm). Offline, the preview says so and still asks.
