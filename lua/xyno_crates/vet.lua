@@ -241,9 +241,19 @@ function M.fetch_meta(name, cb)
     end)
   end
   local argv = {
-    "curl", "--silent", "--show-error", "--max-time", tostring(math.max(1, math.floor((cm.config.timeout_ms or 5000) / 1000))),
-    "--proto", cm.config.proto or "=https", "--proto-redir", cm.config.proto or "=https",
-    "-A", cm.config.user_agent or "xyno-crates.nvim", "-H", "Accept: application/json",
+    "curl",
+    "--silent",
+    "--show-error",
+    "--max-time",
+    tostring(math.max(1, math.floor((cm.config.timeout_ms or 5000) / 1000))),
+    "--proto",
+    cm.config.proto or "=https",
+    "--proto-redir",
+    cm.config.proto or "=https",
+    "-A",
+    cm.config.user_agent or "xyno-crates.nvim",
+    "-H",
+    "Accept: application/json",
     cm.config.api_url .. "/crates/" .. lname .. "?include=",
   }
   cm.exec(argv, { timeout = (cm.config.timeout_ms or 5000) + 2000 }, function(r)
@@ -280,7 +290,11 @@ local function valid_utf8(s)
   local out, i, n = {}, 1, #s
   while i <= n do
     local c = s:byte(i)
-    local len = c < 0x80 and 1 or (c >= 0xC2 and c <= 0xDF) and 2 or (c >= 0xE0 and c <= 0xEF) and 3 or (c >= 0xF0 and c <= 0xF4) and 4 or 0
+    local len = c < 0x80 and 1
+      or (c >= 0xC2 and c <= 0xDF) and 2
+      or (c >= 0xE0 and c <= 0xEF) and 3
+      or (c >= 0xF0 and c <= 0xF4) and 4
+      or 0
     local seq = len > 0 and s:sub(i, i + len - 1) or nil
     local ok = seq ~= nil and #seq == len
     for k = 2, len do
@@ -363,19 +377,46 @@ function M.render(p)
   end
   add(("cargo add %s"):format(M.sanitize(spec.name, 80)))
   local newest = info and info.newest and M.sanitize(info.newest, 40) or nil
-  add(("  version    %s"):format(newest and newest ~= "" and "newest on crates.io is listed below; cargo picks the newest compatible with the package's rust-version" or "cargo picks the newest compatible release (not looked up)"))
+  add(
+    ("  version    %s"):format(
+      newest
+          and newest ~= ""
+          and "newest on crates.io is listed below; cargo picks the newest compatible with the package's rust-version"
+        or "cargo picks the newest compatible release (not looked up)"
+    )
+  )
   local feats = spec.features and #spec.features > 0 and M.sanitize(table.concat(spec.features, ", "), 120) or "none"
-  add(("  features   %s%s"):format(feats, spec.default_features == false and "  (default features OFF)" or "  (+ default features)"))
-  add(("  into       [%s]%s"):format(({ normal = "dependencies", dev = "dev-dependencies", build = "build-dependencies" })[spec.kind or "normal"], spec.package and (" of " .. M.sanitize(spec.package, 80)) or ""))
+  add(
+    ("  features   %s%s"):format(
+      feats,
+      spec.default_features == false and "  (default features OFF)" or "  (+ default features)"
+    )
+  )
+  add(
+    ("  into       [%s]%s"):format(
+      ({ normal = "dependencies", dev = "dev-dependencies", build = "build-dependencies" })[spec.kind or "normal"],
+      spec.package and (" of " .. M.sanitize(spec.package, 80)) or ""
+    )
+  )
   local dl = meta and meta.downloads or (info and info.downloads)
   local recent = meta and meta.recent_downloads or (info and info.recent_downloads)
   if dl then
-    add(("  downloads  %s total%s"):format(human_n(dl), recent and (", " .. human_n(recent) .. " in the last 90 days") or ""))
+    add(
+      ("  downloads  %s total%s"):format(
+        human_n(dl),
+        recent and (", " .. human_n(recent) .. " in the last 90 days") or ""
+      )
+    )
   end
   if meta and meta.created_at then
     local created = M.human_age(M.age_seconds(meta.created_at, p.now))
     local updated = meta.updated_at and M.human_age(M.age_seconds(meta.updated_at, p.now))
-    add(("  age        first published %s ago%s"):format(created or "?", updated and (", last updated " .. updated .. " ago") or ""))
+    add(
+      ("  age        first published %s ago%s"):format(
+        created or "?",
+        updated and (", last updated " .. updated .. " ago") or ""
+      )
+    )
     local secs = M.age_seconds(meta.created_at, p.now)
     if secs and secs < 30 * 86400 then
       warns[#warns + 1] = "this crate was first published less than 30 days ago"
@@ -388,7 +429,11 @@ function M.render(p)
     warns[#warns + 1] = "crates.io has no (or no reachable) index entry for this name: check the spelling"
   end
   if p.typo then
-    warns[#warns + 1] = ("the name looks like the popular crate `%s` (%s): possible typosquat, check %s"):format(p.typo.similar, p.typo.why, "the repository listed below")
+    warns[#warns + 1] = ("the name looks like the popular crate `%s` (%s): possible typosquat, check %s"):format(
+      p.typo.similar,
+      p.typo.why,
+      "the repository listed below"
+    )
   end
   -- Registry text: its own labelled block, every line prefixed, so nothing in it can pass for the
   -- plugin's own lines (WARNING, version, downloads) above and below.

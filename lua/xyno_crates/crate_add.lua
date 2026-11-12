@@ -49,7 +49,14 @@ local CMD_ADD, CMD_PICK = "xyno.crateAdd", "xyno.crateAddPick"
 -- first segments that are never crates: tool attributes (#[rustfmt::skip],
 -- #[clippy::...]) and primitive types (u32::MAX)
 local NEVER = {}
-for _, n in ipairs(vim.split("rustfmt clippy rustc rustdoc miri rust_analyzer diagnostic u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64 bool char str", " ")) do
+for _, n in
+  ipairs(
+    vim.split(
+      "rustfmt clippy rustc rustdoc miri rust_analyzer diagnostic u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64 bool char str",
+      " "
+    )
+  )
+do
   NEVER[n] = true
 end
 
@@ -102,7 +109,12 @@ local function use_bound(n, buf, out, globs, last, top)
   elseif t == "scoped_use_list" then
     local p = field(n, "path")
     local l = field(n, "list")
-    local plast = p and (p:type() == "identifier" and text(p, buf) or (p:type() == "scoped_identifier" and text(field(p, "name"), buf))) or nil
+    local plast = p
+        and (p:type() == "identifier" and text(p, buf) or (p:type() == "scoped_identifier" and text(
+          field(p, "name"),
+          buf
+        )))
+      or nil
     -- a wildcard inside the list (`a::{b::*}`) comes from the outer head
     local h = p
     while h and h:type() == "scoped_identifier" do
@@ -155,7 +167,11 @@ function M.applicable_file(file)
     return false
   end
   file = require("xyno_rust.fsutil").slash(file)
-  if file:find("/.cargo/registry/", 1, true) or file:find("/.cargo/git/", 1, true) or file:find("/target/", 1, true) then
+  if
+    file:find("/.cargo/registry/", 1, true)
+    or file:find("/.cargo/git/", 1, true)
+    or file:find("/target/", 1, true)
+  then
     return false
   end
   return true
@@ -405,7 +421,6 @@ end
 
 -- ----------------------------------------------------------- cargo add
 
-
 --- spec = { name, features = {}, default_features = true|false, kind =
 --- "normal"|"dev"|"build", package = member name, offline = bool }.
 --- Returns the argv, or nil + a reason. Version is left to cargo (it picks the
@@ -512,8 +527,12 @@ function M.run_add(root, spec, cb)
     cm.invalidate(root)
     if r.code ~= 0 then
       local msg = vim.trim(r.stderr) ~= "" and vim.trim(r.stderr) or ("cargo add exited " .. r.code)
-      if msg:find("index", 1, true) and (msg:find("resolve", 1, true) or msg:find("network", 1, true) or msg:find("download", 1, true)) then
-        msg = msg .. "\n(offline? cargo could not reach the registry; the crate may be added with --offline once it is cached)"
+      if
+        msg:find("index", 1, true)
+        and (msg:find("resolve", 1, true) or msg:find("network", 1, true) or msg:find("download", 1, true))
+      then
+        msg = msg
+          .. "\n(offline? cargo could not reach the registry; the crate may be added with --offline once it is cached)"
       end
       notify("cargo add failed:\n" .. msg, vim.log.levels.ERROR)
       return cb and cb(false, msg)
@@ -540,15 +559,19 @@ function M.confirm_and_add(root, spec, cb)
   if not M.config.confirm then
     return M.run_add(root, spec, cb)
   end
-  require("xyno_crates.vet").preview(spec, { typosquat = M.config.typosquat, audit = M.config.audit ~= "off" }, function(preview)
-    M.ui.confirm(preview, function(yes)
-      if not yes then
-        notify("cargo add " .. spec.name .. " cancelled")
-        return cb and cb(false, "cancelled")
-      end
-      M.run_add(root, spec, cb)
-    end)
-  end)
+  require("xyno_crates.vet").preview(
+    spec,
+    { typosquat = M.config.typosquat, audit = M.config.audit ~= "off" },
+    function(preview)
+      M.ui.confirm(preview, function(yes)
+        if not yes then
+          notify("cargo add " .. spec.name .. " cancelled")
+          return cb and cb(false, "cancelled")
+        end
+        M.run_add(root, spec, cb)
+      end)
+    end
+  )
 end
 
 --- Run `cargo audit --json` on the workspace lockfile (async) and report the advisories that
@@ -564,11 +587,22 @@ function M.audit(root, name, cb)
     local hits = {}
     for _, v in ipairs(j.vulnerabilities and j.vulnerabilities.list or {}) do
       if v.package and v.package.name == name then
-        hits[#hits + 1] = ("%s %s"):format(one_line(v.advisory and v.advisory.id or "?", 30), one_line(v.advisory and v.advisory.title or "", 120))
+        hits[#hits + 1] = ("%s %s"):format(
+          one_line(v.advisory and v.advisory.id or "?", 30),
+          one_line(v.advisory and v.advisory.title or "", 120)
+        )
       end
     end
     if #hits > 0 then
-      notify(("cargo audit: %d advisor%s for %s:\n  %s"):format(#hits, #hits == 1 and "y" or "ies", name, table.concat(hits, "\n  ")), vim.log.levels.WARN)
+      notify(
+        ("cargo audit: %d advisor%s for %s:\n  %s"):format(
+          #hits,
+          #hits == 1 and "y" or "ies",
+          name,
+          table.concat(hits, "\n  ")
+        ),
+        vim.log.levels.WARN
+      )
     else
       notify("cargo audit: no advisories for " .. name)
     end
@@ -728,7 +762,10 @@ local function choose_and_add(name, info, ctx, cb)
     return target_step({}, true)
   end
   M.ui.pick({
-    title = ("Features of %s %s  (Tab: toggle, Enter: confirm)"):format(one_line(name, 64), one_line(info.newest or "", 30)),
+    title = ("Features of %s %s  (Tab: toggle, Enter: confirm)"):format(
+      one_line(name, 64),
+      one_line(info.newest or "", 30)
+    ),
     items = fitems,
     multi = true,
   }, function(sel)
@@ -753,13 +790,21 @@ function M.add(query, cb)
   local file = vim.api.nvim_buf_get_name(0)
   local root = cm.root(file ~= "" and file or vim.uv.cwd())
   if not root then
-    return notify("not in a cargo workspace (no Cargo.toml above " .. (file ~= "" and file or vim.uv.cwd()) .. ")", vim.log.levels.WARN)
+    return notify(
+      "not in a cargo workspace (no Cargo.toml above " .. (file ~= "" and file or vim.uv.cwd()) .. ")",
+      vim.log.levels.WARN
+    )
   end
   local function with_query(q)
     notify("searching crates.io for '" .. q .. "' ...")
     cm.search_async(q, function(list, err)
       if not list then
-        return notify(("crates.io search failed: %s\n(offline: results appear here again once a search has been cached)"):format(err), vim.log.levels.ERROR)
+        return notify(
+          ("crates.io search failed: %s\n(offline: results appear here again once a search has been cached)"):format(
+            err
+          ),
+          vim.log.levels.ERROR
+        )
       end
       if #list == 0 then
         return notify("no crate matches '" .. q .. "'", vim.log.levels.WARN)
@@ -768,7 +813,12 @@ function M.add(query, cb)
       for _, c in ipairs(list) do
         items[#items + 1] = {
           text = one_line(c.name, 80) .. " " .. one_line(c.description, 200),
-          display = ("%-26s %-10s %7s  %s"):format(one_line(c.name, 40), one_line(c.version or "?", 20), human(c.downloads), one_line(c.description, 80)),
+          display = ("%-26s %-10s %7s  %s"):format(
+            one_line(c.name, 40),
+            one_line(c.version or "?", 20),
+            human(c.downloads),
+            one_line(c.description, 80)
+          ),
           crate = c,
         }
       end
@@ -818,19 +868,26 @@ function M.add_direct(bufnr, name, cb)
   cm.metadata_async(root, function(meta, err)
     local member = meta and cm.member_of(meta, file)
     if not member then
-      notify("cannot add " .. name .. ": " .. tostring(err or "file is not in a workspace member"), vim.log.levels.ERROR)
+      notify(
+        "cannot add " .. name .. ": " .. tostring(err or "file is not in a workspace member"),
+        vim.log.levels.ERROR
+      )
       return cb and cb(false, err)
     end
     local rel = file:sub(#member.dir + 2)
     local kind = (rel:match("^tests/") or rel:match("^benches/") or rel:match("^examples/")) and "dev" or "normal"
-    M.confirm_and_add(root, { name = name, kind = kind, package = member.name, manifest = member.manifest_path }, function(ok, msg)
-      if ok then
-        M.schedule(bufnr, 50)
+    M.confirm_and_add(
+      root,
+      { name = name, kind = kind, package = member.name, manifest = member.manifest_path },
+      function(ok, msg)
+        if ok then
+          M.schedule(bufnr, 50)
+        end
+        if cb then
+          cb(ok, msg)
+        end
       end
-      if cb then
-        cb(ok, msg)
-      end
-    end)
+    )
   end)
 end
 
@@ -917,7 +974,13 @@ function M.server(dispatchers)
       reply(cb, nil, vim.api.nvim_buf_is_valid(bufnr) and M.actions_for(bufnr, params.range) or {})
     elseif method == "workspace/executeCommand" then
       local arg = params.arguments and params.arguments[1] or {}
-      if type(arg.name) == "string" and cm.valid_name(arg.name) and arg.name:sub(1, 1) ~= "-" and type(arg.bufnr) == "number" and vim.api.nvim_buf_is_valid(arg.bufnr) then
+      if
+        type(arg.name) == "string"
+        and cm.valid_name(arg.name)
+        and arg.name:sub(1, 1) ~= "-"
+        and type(arg.bufnr) == "number"
+        and vim.api.nvim_buf_is_valid(arg.bufnr)
+      then
         if params.command == CMD_ADD then
           -- one add path for the diagnostic action and the import picker
           require("xyno_crates.crate_import").add_and_import(arg.bufnr, { crate = arg.name })

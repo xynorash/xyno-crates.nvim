@@ -3,7 +3,6 @@
 local M = {}
 local cm = require("xyno_rust.crate_meta")
 
-
 local Scan = require("xyno_crates.features.scan")
 local Tables = require("xyno_crates.features.tables")
 local Manifest = require("xyno_crates.features.manifest")
@@ -168,7 +167,10 @@ end
 --- Preview text of a feature.
 function M.feature_preview(info, f)
   local out = { "# " .. info.crate .. " " .. (info.version or "") .. " / " .. f.name, "" }
-  out[#out + 1] = "declared in Cargo.toml: " .. (f.declared and "yes" or "no") .. "; effective: " .. (f.on and "yes" or "no")
+  out[#out + 1] = "declared in Cargo.toml: "
+    .. (f.declared and "yes" or "no")
+    .. "; effective: "
+    .. (f.on and "yes" or "no")
   if #f.implies > 0 then
     out[#out + 1] = "implies: " .. table.concat(f.implies, ", ")
   end
@@ -265,9 +267,15 @@ local function toggle_feature(info, f)
   local turn_on = not f.declared
   Manifest.set_features(d, features, turn_on, function(ok, how)
     if ok then
-      vim.notify(("%s feature `%s` of `%s` (%s)"):format(turn_on and "Enabled" or "Disabled", f.name, info.crate, how), vim.log.levels.INFO)
+      vim.notify(
+        ("%s feature `%s` of `%s` (%s)"):format(turn_on and "Enabled" or "Disabled", f.name, info.crate, how),
+        vim.log.levels.INFO
+      )
     else
-      vim.notify(("Cannot %s `%s`: %s"):format(turn_on and "enable" or "disable", f.name, how or "?"), vim.log.levels.WARN)
+      vim.notify(
+        ("Cannot %s `%s`: %s"):format(turn_on and "enable" or "disable", f.name, how or "?"),
+        vim.log.levels.WARN
+      )
     end
     -- the manifest changed: show the list again with fresh metadata
     cm.metadata_async(info.root, function(meta)
@@ -322,7 +330,10 @@ function M.open(crate)
       return not crate or crate == "" or d.name == crate or d.alias == crate
     end, meta.dependencies)
     if #deps == 0 then
-      return vim.notify(("CrateFeatures: no dependency %s"):format(crate and ("`" .. crate .. "`") or ""), vim.log.levels.WARN)
+      return vim.notify(
+        ("CrateFeatures: no dependency %s"):format(crate and ("`" .. crate .. "`") or ""),
+        vim.log.levels.WARN
+      )
     end
     if #deps == 1 then
       return open_features(meta, deps[1], root)
@@ -331,7 +342,14 @@ function M.open(crate)
     for _, d in ipairs(deps) do
       local declared = #d.features > 0 and table.concat(d.features, ", ") or "-"
       items[#items + 1] = {
-        text = ("%s %s  %s%s  features: %s%s"):format(d.name, d.resolved and d.resolved.version or "", d.member, d.kind ~= "normal" and (" (" .. d.kind .. ")") or "", declared, d.uses_default_features and "" or "  (no default)"),
+        text = ("%s %s  %s%s  features: %s%s"):format(
+          d.name,
+          d.resolved and d.resolved.version or "",
+          d.member,
+          d.kind ~= "normal" and (" (" .. d.kind .. ")") or "",
+          declared,
+          d.uses_default_features and "" or "  (no default)"
+        ),
         data = d,
       }
     end

@@ -125,7 +125,15 @@ describe("age", function()
   end)
 
   it("parse_crate reads the web API answer", function()
-    local m = vet.parse_crate(vim.json.encode({ crate = { created_at = "2020-01-01T00:00:00+00:00", updated_at = "2026-01-01T00:00:00+00:00", downloads = 5, recent_downloads = 2, repository = "https://example.org/r" } }))
+    local m = vet.parse_crate(vim.json.encode({
+      crate = {
+        created_at = "2020-01-01T00:00:00+00:00",
+        updated_at = "2026-01-01T00:00:00+00:00",
+        downloads = 5,
+        recent_downloads = 2,
+        repository = "https://example.org/r",
+      },
+    }))
     H.eq(5, m.downloads)
     H.eq("https://example.org/r", m.repository)
     H.is_nil(vet.parse_crate("not json"))
@@ -138,7 +146,12 @@ describe("preview", function()
     local r = vet.render({
       spec = { name = "itoa", features = { "std", "alloc" }, default_features = false, kind = "dev", package = "app" },
       info = { newest = "1.0.15", repository = "https://github.com/dtolnay/itoa" },
-      meta = { downloads = 1600000000, recent_downloads = 20000000, created_at = ago(math.floor(10.4 * 365.25 * 86400)), updated_at = ago(2 * 86400 + 600) },
+      meta = {
+        downloads = 1600000000,
+        recent_downloads = 20000000,
+        created_at = ago(math.floor(10.4 * 365.25 * 86400)),
+        updated_at = ago(2 * 86400 + 600),
+      },
       now = NOW,
     })
     local text = table.concat(r.lines, "\n")
@@ -203,9 +216,16 @@ local HOSTILE = table.concat({
 local function bad_bytes(text)
   local found = {}
   for _, pat in ipairs({
-    { "ESC", "\27" }, { "BEL", "\7" }, { "NUL", "%z" }, { "C0", "[\1-\8\11-\31\127]" }, { "CR", "\r" },
-    { "RLO etc", "\226\128[\142\143\168-\174]" }, { "isolates", "\226\129[\166-\169\160]" },
-    { "ZW", "\226\128[\139-\141]" }, { "BOM", "\239\187\191" }, { "C1", "\194[\128-\159]" },
+    { "ESC", "\27" },
+    { "BEL", "\7" },
+    { "NUL", "%z" },
+    { "C0", "[\1-\8\11-\31\127]" },
+    { "CR", "\r" },
+    { "RLO etc", "\226\128[\142\143\168-\174]" },
+    { "isolates", "\226\129[\166-\169\160]" },
+    { "ZW", "\226\128[\139-\141]" },
+    { "BOM", "\239\187\191" },
+    { "C1", "\194[\128-\159]" },
   }) do
     if text:find(pat[2]) then
       found[#found + 1] = pat[1]
@@ -215,19 +235,22 @@ local function bad_bytes(text)
 end
 
 describe("hostile registry strings", function()
-  it("sanitize: control characters, escape sequences and bidi overrides are removed, whitespace collapsed, length capped", function()
-    local s = vet.sanitize(HOSTILE, 100)
-    H.eq({}, bad_bytes(s), "no control / bidi bytes survive")
-    H.no_match(s, "\n", true)
-    H.ok(#s <= 103, "capped, got " .. #s)
-    H.no_match(s, "pwned", true, "an OSC title sequence is dropped with its payload")
-    H.no_match(s, "evil.test", true, "an OSC 8 hyperlink target is dropped")
-    H.eq("a b c", vet.sanitize("a \t\n  b\r\n c"))
-    H.eq("", vet.sanitize(nil))
-    H.eq("42", vet.sanitize(42))
-    H.eq("caf\195\169 \226\156\147", vet.sanitize("caf\195\169 \226\156\147"), "ordinary UTF-8 is kept")
-    H.eq({}, bad_bytes(vet.sanitize("ok\255\254bad\192\175utf8")), "invalid UTF-8 does not pass through")
-  end)
+  it(
+    "sanitize: control characters, escape sequences and bidi overrides are removed, whitespace collapsed, length capped",
+    function()
+      local s = vet.sanitize(HOSTILE, 100)
+      H.eq({}, bad_bytes(s), "no control / bidi bytes survive")
+      H.no_match(s, "\n", true)
+      H.ok(#s <= 103, "capped, got " .. #s)
+      H.no_match(s, "pwned", true, "an OSC title sequence is dropped with its payload")
+      H.no_match(s, "evil.test", true, "an OSC 8 hyperlink target is dropped")
+      H.eq("a b c", vet.sanitize("a \t\n  b\r\n c"))
+      H.eq("", vet.sanitize(nil))
+      H.eq("42", vet.sanitize(42))
+      H.eq("caf\195\169 \226\156\147", vet.sanitize("caf\195\169 \226\156\147"), "ordinary UTF-8 is kept")
+      H.eq({}, bad_bytes(vet.sanitize("ok\255\254bad\192\175utf8")), "invalid UTF-8 does not pass through")
+    end
+  )
 
   it("a hostile repository / version cannot add lines, escapes or a fake OK to the confirmation", function()
     local r = vet.render({
@@ -286,11 +309,20 @@ describe("hostile registry strings", function()
   end)
 
   it("a repository that is not a plain http(s) URL is flagged, a plain one is not", function()
-    for _, url in ipairs({ "javascript:alert(1)", "file:///etc/passwd", "https://user:pw@host.test/x", "ssh://git@host/x" }) do
+    for _, url in ipairs({
+      "javascript:alert(1)",
+      "file:///etc/passwd",
+      "https://user:pw@host.test/x",
+      "ssh://git@host/x",
+    }) do
       local r = vet.render({ spec = { name = "itoa" }, info = { newest = "1.0.0", repository = url }, now = NOW })
       H.match(table.concat(r.lines, "\n"), "not a plain http(s) URL", true, url)
     end
-    local r = vet.render({ spec = { name = "itoa" }, info = { newest = "1.0.0", repository = "https://github.com/dtolnay/itoa" }, now = NOW })
+    local r = vet.render({
+      spec = { name = "itoa" },
+      info = { newest = "1.0.0", repository = "https://github.com/dtolnay/itoa" },
+      now = NOW,
+    })
     H.no_match(table.concat(r.lines, "\n"), "not a plain http(s) URL", true)
   end)
 
@@ -313,7 +345,9 @@ describe("hostile registry strings", function()
   end)
 
   it("feature picker items, search results and audit titles are sanitised too", function()
-    local items = ca.feature_items({ features = { default = { "std" }, ["x" .. ESC .. "[2Jy"] = { "dep\nOK" .. ESC .. "]0;t" .. BEL } } })
+    local items = ca.feature_items({
+      features = { default = { "std" }, ["x" .. ESC .. "[2Jy"] = { "dep\nOK" .. ESC .. "]0;t" .. BEL } },
+    })
     for _, it in ipairs(items) do
       H.eq({}, bad_bytes(it.display .. it.text), it.display)
       H.not_ok((it.display .. it.text):find("\n", 1, true))
@@ -426,7 +460,15 @@ describe("confirm before cargo add", function()
   it("audit = run reports advisories of the added crate (fake cargo-audit)", function()
     local bin = H.tmpdir() .. "/bin"
     vim.fn.mkdir(bin, "p")
-    local json = vim.json.encode({ vulnerabilities = { found = true, list = { { advisory = { id = "RUSTSEC-2099-0001", title = "boom" }, package = { name = "itoa" } }, { advisory = { id = "RUSTSEC-2099-0002", title = "other" }, package = { name = "zzz" } } } } })
+    local json = vim.json.encode({
+      vulnerabilities = {
+        found = true,
+        list = {
+          { advisory = { id = "RUSTSEC-2099-0001", title = "boom" }, package = { name = "itoa" } },
+          { advisory = { id = "RUSTSEC-2099-0002", title = "other" }, package = { name = "zzz" } },
+        },
+      },
+    })
     vim.fn.writefile({ "#!/bin/sh", "cat <<'EOF'", json, "EOF", "exit 1" }, bin .. "/cargo-audit")
     vim.uv.fs_chmod(bin .. "/cargo-audit", 493)
     vim.env.PATH = bin .. ":" .. saved_path

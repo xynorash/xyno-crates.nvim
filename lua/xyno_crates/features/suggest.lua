@@ -3,7 +3,6 @@
 local M = {}
 local cm = require("xyno_rust.crate_meta")
 
-
 local Scan = require("xyno_crates.features.scan")
 local Tables = require("xyno_crates.features.tables")
 
@@ -63,7 +62,10 @@ end
 
 local function diag_names(d, lines)
   local names = M.names_from_message(d.message)
-  if #names > 0 or not (d.message:match("[Uu]nresolved") or d.message:match("cannot find") or d.message:match("could not find")) then
+  if
+    #names > 0
+    or not (d.message:match("[Uu]nresolved") or d.message:match("cannot find") or d.message:match("could not find"))
+  then
     return names
   end
   -- no name in the message: the identifier under the diagnostic, when it
@@ -150,7 +152,12 @@ function M.suggest(meta, file, lines, diags)
             if feats and #feats > 0 then
               local dup = false
               for _, s in ipairs(out) do
-                if s.member == d.member and s.kind == d.kind and s.crate == d.name and table.concat(s.features, ",") == table.concat(feats, ",") then
+                if
+                  s.member == d.member
+                  and s.kind == d.kind
+                  and s.crate == d.name
+                  and table.concat(s.features, ",") == table.concat(feats, ",")
+                then
                   dup = true
                   s.names[#s.names + 1] = n.name
                 end

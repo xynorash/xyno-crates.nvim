@@ -3,7 +3,6 @@
 local M = {}
 local cm = require("xyno_rust.crate_meta")
 
-
 local Scan = require("xyno_crates.features.scan")
 local close_of = Scan._close_of
 
@@ -142,7 +141,10 @@ function M.edit_manifest(text, spec, op, features)
           local lb = l.t:match("^%s*features%s*=%s*()%[")
           if lb then
             local new = array_edit(cur, l.s + lb - 1, op, f)
-            return new, new == nil and (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest") or nil
+            return new,
+              new == nil
+                  and (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest")
+                or nil
           end
         end
         if op == "remove" then
@@ -166,7 +168,10 @@ function M.edit_manifest(text, spec, op, features)
               local lb = l.t:match("=%s*()%[")
               if lb then
                 local new = array_edit(cur, l.s + lb - 1, op, f)
-                return new, new == nil and (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest") or nil
+                return new,
+                  new == nil
+                      and (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest")
+                    or nil
               end
             end
           end
@@ -191,7 +196,13 @@ function M.edit_manifest(text, spec, op, features)
               end
               local e = cur:find('"', abs + 1, true)
               local ver = cur:sub(abs + 1, (e or abs + 1) - 1)
-              return cur:sub(1, abs - 1) .. '{ version = "' .. ver .. '", features = ["' .. f .. '"] }' .. cur:sub((e or abs) + 1)
+              return cur:sub(1, abs - 1)
+                .. '{ version = "'
+                .. ver
+                .. '", features = ["'
+                .. f
+                .. '"] }'
+                .. cur:sub((e or abs) + 1)
             elseif c == "{" then
               local e = close_of(cur, abs)
               if not e then
@@ -201,7 +212,10 @@ function M.edit_manifest(text, spec, op, features)
               local fl = tbl:match("[{,%s]features%s*=%s*()%[")
               if fl then
                 local new = array_edit(cur, abs + fl - 1, op, f)
-                return new, new == nil and (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest") or nil
+                return new,
+                  new == nil
+                      and (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest")
+                    or nil
               end
               if op == "remove" then
                 return nil, "feature not declared in this manifest"
@@ -235,7 +249,8 @@ function M.edit_manifest(text, spec, op, features)
     end
   end
   if not changed then
-    return nil, last_why or (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest")
+    return nil,
+      last_why or (op == "add" and "already enabled in this manifest" or "feature not declared in this manifest")
   end
   return result
 end
@@ -388,9 +403,20 @@ function M.apply(arg, cb)
     end
     M.set_features(d, arg.features, true, function(ok, how)
       if ok then
-        vim.notify(("Enabled %s of `%s` in %s (%s)"):format(table.concat(arg.features, ", "), arg.crate, vim.fn.fnamemodify(d.member_manifest, ":~:."), how), vim.log.levels.INFO)
+        vim.notify(
+          ("Enabled %s of `%s` in %s (%s)"):format(
+            table.concat(arg.features, ", "),
+            arg.crate,
+            vim.fn.fnamemodify(d.member_manifest, ":~:."),
+            how
+          ),
+          vim.log.levels.INFO
+        )
       else
-        vim.notify(("Could not enable %s of `%s`: %s"):format(table.concat(arg.features, ", "), arg.crate, how or "?"), vim.log.levels.WARN)
+        vim.notify(
+          ("Could not enable %s of `%s`: %s"):format(table.concat(arg.features, ", "), arg.crate, how or "?"),
+          vim.log.levels.WARN
+        )
       end
       cb(ok, how)
     end)

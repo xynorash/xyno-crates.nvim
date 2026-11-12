@@ -3,8 +3,6 @@
 local M = {}
 local cm = require("xyno_rust.crate_meta")
 
-
-
 M.config = {
   max_files = 150, -- source files read per crate scan
   max_file_bytes = 600 * 1024,
@@ -114,7 +112,7 @@ end
 local function strip(text)
   local out, last, i, n = {}, 1, 1, #text
   while i <= n do
-    local j = text:find('[/"\'r]', i)
+    local j = text:find("[/\"'r]", i)
     if not j then
       break
     end
@@ -471,11 +469,17 @@ function M.scan_dir(dir)
       end
       local mods = vim.list_slice(st.mods, 1, #st.mods)
       mods[#mods + 1] = name
-      parse_region(t, q + 1, e - 1, { gate = gate, mods = mods, pubchain = st.pubchain and vis, dir = st.dir .. "/" .. name })
+      parse_region(
+        t,
+        q + 1,
+        e - 1,
+        { gate = gate, mods = mods, pubchain = st.pubchain and vis, dir = st.dir .. "/" .. name }
+      )
       return e + 1
     end
     local rel = path_attr and not path_attr:find("..", 1, true) and path_attr:sub(1, 1) ~= "/" and path_attr or nil
-    local cands = rel and { st.dir .. "/" .. rel } or { st.dir .. "/" .. name .. ".rs", st.dir .. "/" .. name .. "/mod.rs" }
+    local cands = rel and { st.dir .. "/" .. rel }
+      or { st.dir .. "/" .. name .. ".rs", st.dir .. "/" .. name .. "/mod.rs" }
     for _, c in ipairs(cands) do
       if vim.uv.fs_stat(c) then
         local child_dir = c:match("/mod%.rs$") and vim.fs.dirname(c) or (st.dir .. "/" .. name)
@@ -611,7 +615,14 @@ function M.scan_dir(dir)
           add(name, st, gate, word, true)
         end
         p = item_end(t, wend, lim, true)
-      elseif word == "fn" or word == "struct" or word == "enum" or word == "trait" or word == "type" or word == "union" then
+      elseif
+        word == "fn"
+        or word == "struct"
+        or word == "enum"
+        or word == "trait"
+        or word == "type"
+        or word == "union"
+      then
         local name = t:match("^([%a_][%w_]*)", skip_ws(t, wend, lim))
         if vis and name then
           add(name, st, gate, word, true)

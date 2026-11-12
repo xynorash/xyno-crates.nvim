@@ -125,7 +125,11 @@ describe("crate_add.scan: what is flagged", function()
   it("flags the head of a nested use list and of a wildcard use", function()
     local root = make_ws()
     H.eq({ "alpha@1", "beta@2" }, scan(root, "use alpha::{a, b::c};\nuse beta::x;\nfn main() {}\n"))
-    H.eq({}, scan(root, "use alpha::{b::*};\nfn main() { rand::random::<u8>(); }\n"), "a glob of an unknown crate may bring any name")
+    H.eq(
+      {},
+      scan(root, "use alpha::{b::*};\nfn main() { rand::random::<u8>(); }\n"),
+      "a glob of an unknown crate may bring any name"
+    )
   end)
 
   it("reports the exact head range", function()
@@ -165,7 +169,7 @@ describe("crate_add.scan: what is never flagged", function()
       "    core::mem::drop(1);",
       "    let _ = u32::MAX;",
       "    let _ = S::new();",
-      "    println!(\"{}\", rand::random::<u8>());", -- macro arguments are tokens, not paths
+      '    println!("{}", rand::random::<u8>());', -- macro arguments are tokens, not paths
       "}",
       "#[rustfmt::skip]",
       "#[cfg(test)]",
@@ -181,7 +185,11 @@ describe("crate_add.scan: what is never flagged", function()
   it("keeps quiet in files that glob-import from the own crate or another file", function()
     local root = make_ws()
     H.eq({}, scan(root, "use crate::prelude::*;\nfn main() { rand::random::<u8>(); }\n"))
-    H.eq({}, scan(root, "use super::*;\nfn t() { rand::random::<u8>(); }\n"), "super:: at file level reaches another file")
+    H.eq(
+      {},
+      scan(root, "use super::*;\nfn t() { rand::random::<u8>(); }\n"),
+      "super:: at file level reaches another file"
+    )
   end)
 
   it("keeps flagging when the glob is std, an enum or super inside an inline mod", function()
@@ -206,9 +214,11 @@ describe("crate_add.scan: what is never flagged", function()
 
   it("the in-process server reports on_exit once, from terminate and from exit (no stopped client entry)", function()
     local exits = 0
-    local srv = ca.server({ on_exit = function()
-      exits = exits + 1
-    end })
+    local srv = ca.server({
+      on_exit = function()
+        exits = exits + 1
+      end,
+    })
     srv.terminate()
     srv.notify("exit")
     srv.terminate()
@@ -241,7 +251,10 @@ end)
 describe("crate_add.build_argv", function()
   it("builds the argv for each target and flag", function()
     H.eq({ "cargo", "add", "itoa" }, ca.build_argv({ name = "itoa" }))
-    H.eq({ "cargo", "add", "itoa", "-p", "app", "--dev" }, ca.build_argv({ name = "itoa", package = "app", kind = "dev" }))
+    H.eq(
+      { "cargo", "add", "itoa", "-p", "app", "--dev" },
+      ca.build_argv({ name = "itoa", package = "app", kind = "dev" })
+    )
     H.eq({ "cargo", "add", "itoa", "--build" }, ca.build_argv({ name = "itoa", kind = "build" }))
     H.eq(
       { "cargo", "add", "serde", "--no-default-features", "-F", "derive,std", "--offline" },
@@ -289,7 +302,8 @@ local function fake_registry(opts)
         return cb(nil, opts.search_err)
       end
       local list = { stale = opts.stale, from_cache = opts.stale or opts.from_cache }
-      list[1] = { name = "itoa", version = "1.0.15", downloads = 123456789, description = "Fast integer to string conversion" }
+      list[1] =
+        { name = "itoa", version = "1.0.15", downloads = 123456789, description = "Fast integer to string conversion" }
       list[2] = { name = "itoap", version = "1.0.0", downloads = 5, description = "other" }
       cb(list)
     end)
@@ -352,7 +366,10 @@ end
 --- Two members, a [workspace.dependencies] with itoa, the buffer is app's.
 local function make_flow_ws()
   local root = H.tmpdir() .. "/flow"
-  write(root .. "/Cargo.toml", '[workspace]\nmembers = ["app", "lib2"]\nresolver = "2"\n\n[workspace.dependencies]\nitoa = "1"\n')
+  write(
+    root .. "/Cargo.toml",
+    '[workspace]\nmembers = ["app", "lib2"]\nresolver = "2"\n\n[workspace.dependencies]\nitoa = "1"\n'
+  )
   pkg(root, "app", "\n[dependencies]\n")
   pkg(root, "lib2")
   write(root .. "/app/src/main.rs", "fn main() {}\n")
@@ -389,9 +406,18 @@ describe("crate_add :CrateAdd flow (stubbed crates.io and cargo)", function()
     local calls = fake_cargo()
     local cases = {
       { { member = "app", kind = "normal" }, { "cargo", "add", "itoa", "-p", "app" } },
-      { { member = "app", kind = "dev", features = { "default", "alloc" } }, { "cargo", "add", "itoa", "-p", "app", "--dev", "-F", "alloc" } },
-      { { member = "lib2", kind = "build", features = { "std", "alloc" } }, { "cargo", "add", "itoa", "-p", "lib2", "--build", "--no-default-features", "-F", "std,alloc" } },
-      { { member = "lib2", kind = "normal", features = { "no-panic" } }, { "cargo", "add", "itoa", "-p", "lib2", "--no-default-features", "-F", "no-panic" } },
+      {
+        { member = "app", kind = "dev", features = { "default", "alloc" } },
+        { "cargo", "add", "itoa", "-p", "app", "--dev", "-F", "alloc" },
+      },
+      {
+        { member = "lib2", kind = "build", features = { "std", "alloc" } },
+        { "cargo", "add", "itoa", "-p", "lib2", "--build", "--no-default-features", "-F", "std,alloc" },
+      },
+      {
+        { member = "lib2", kind = "normal", features = { "no-panic" } },
+        { "cargo", "add", "itoa", "-p", "lib2", "--no-default-features", "-F", "no-panic" },
+      },
     }
     for i, c in ipairs(cases) do
       script_ui(c[1])
@@ -517,7 +543,10 @@ end)
 describe("crate_add helpers", function()
   it("added_line finds the line in the table of the kind", function()
     local f = H.tmpdir() .. "/Cargo.toml"
-    write(f, '[package]\nname = "x"\n\n[dependencies]\nserde = "1"\nitoa = { version = "1", features = ["a"] }\n\n[dev-dependencies]\nitoa = "2"\nitoa-extra.workspace = true\n')
+    write(
+      f,
+      '[package]\nname = "x"\n\n[dependencies]\nserde = "1"\nitoa = { version = "1", features = ["a"] }\n\n[dev-dependencies]\nitoa = "2"\nitoa-extra.workspace = true\n'
+    )
     H.eq('itoa = { version = "1", features = ["a"] }', ca.added_line(f, "itoa", "normal"))
     H.eq('itoa = "2"', ca.added_line(f, "itoa", "dev"))
     H.is_nil(ca.added_line(f, "itoa", "build"))
@@ -526,7 +555,10 @@ describe("crate_add helpers", function()
 
   it("in_workspace_table reads inline and table forms only inside [workspace.dependencies]", function()
     local d = H.tmpdir()
-    write(d .. "/Cargo.toml", '[workspace]\n[workspace.dependencies]\na = "1"\nb.version = "1"\n[workspace.dependencies.c]\nversion = "1"\n[dependencies]\nd = "1"\n')
+    write(
+      d .. "/Cargo.toml",
+      '[workspace]\n[workspace.dependencies]\na = "1"\nb.version = "1"\n[workspace.dependencies.c]\nversion = "1"\n[dependencies]\nd = "1"\n'
+    )
     for _, n in ipairs({ "a", "b", "c" }) do
       H.ok(ca.in_workspace_table(d, n), n)
     end
@@ -552,72 +584,85 @@ describe("crate_add unknown-crate hint and code action", function()
     pkg(root, "app2", "\n[dependencies]\n")
     pkg(root, "rand")
     write(root .. "/rand/src/lib.rs", "pub fn random() -> u8 { 4 }\n")
-    write(root .. "/app2/src/main.rs", "fn main() {\n    let n = rand::random();\n    println!(\"{}\", n);\n}\n")
+    write(root .. "/app2/src/main.rs", 'fn main() {\n    let n = rand::random();\n    println!("{}", n);\n}\n')
     return root
   end
 
-  it("shows the hint within 3 s, offers 'Add crate rand' through the code-action menu, and clears it after the add", function()
-    H.known_issue({ "windows" }, "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)")
-    have_rust()
-    local root = make_ws2()
-    local calls = fake_cargo(function()
-      write(root .. "/app2/Cargo.toml", read(root .. "/app2/Cargo.toml") .. 'rand = { path = "../rand" }\n')
-      return { code = 0, stdout = "", stderr = "" }
-    end)
-    start()
-    local t0 = vim.uv.now()
-    vim.cmd.edit(vim.fn.fnameescape(root .. "/app2/src/main.rs"))
-    local buf = vim.api.nvim_get_current_buf()
-    local function hints()
-      return vim.diagnostic.get(buf, { namespace = ca.ns })
+  it(
+    "shows the hint within 3 s, offers 'Add crate rand' through the code-action menu, and clears it after the add",
+    function()
+      H.known_issue(
+        { "windows" },
+        "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)"
+      )
+      have_rust()
+      local root = make_ws2()
+      local calls = fake_cargo(function()
+        write(root .. "/app2/Cargo.toml", read(root .. "/app2/Cargo.toml") .. 'rand = { path = "../rand" }\n')
+        return { code = 0, stdout = "", stderr = "" }
+      end)
+      start()
+      local t0 = vim.uv.now()
+      vim.cmd.edit(vim.fn.fnameescape(root .. "/app2/src/main.rs"))
+      local buf = vim.api.nvim_get_current_buf()
+      local function hints()
+        return vim.diagnostic.get(buf, { namespace = ca.ns })
+      end
+      H.wait_for(function()
+        return #hints() > 0
+      end, 3000, "the unknown-crate hint")
+      H.ok(vim.uv.now() - t0 < 3000)
+      local d = hints()[1]
+      H.eq("crate 'rand' is not a dependency", d.message)
+      H.eq(vim.diagnostic.severity.HINT, d.severity)
+      H.eq("xyno-crates", d.source)
+      H.eq(1, d.lnum)
+
+      -- the in-process server is attached and its action reaches vim.lsp.buf.code_action (<leader>ca)
+      H.wait_for(function()
+        return #H.clients(buf, "xyno-crates") > 0
+      end, 5000, "the xyno-crates client")
+      vim.api.nvim_win_set_cursor(0, { d.lnum + 1, d.col })
+      local titles
+      local orig_select = stub(vim.ui, "select", function(items, _, on_choice)
+        titles = vim.tbl_map(function(i)
+          return i.action and i.action.title or tostring(i)
+        end, items)
+        on_choice(nil)
+      end)
+      vim.lsp.buf.code_action({
+        filter = function(a)
+          return a.title:find("^Add crate") ~= nil
+        end,
+      })
+      H.wait_for(function()
+        return titles
+      end, 3000, "the code-action menu")
+      H.has(titles, "Add crate rand")
+      vim.ui.select = orig_select
+
+      -- apply it: cargo add rand runs for the package of the file, the hint goes away
+      vim.lsp.buf.code_action({
+        filter = function(a)
+          return a.title == "Add crate rand"
+        end,
+        apply = true,
+      })
+      H.wait_for(function()
+        return #calls > 0
+      end, 5000, "cargo add")
+      H.eq({ "cargo", "add", "rand", "-p", "app2" }, calls[1].argv)
+      H.wait_for(function()
+        return #hints() == 0
+      end, 8000, "the hint to disappear")
     end
-    H.wait_for(function()
-      return #hints() > 0
-    end, 3000, "the unknown-crate hint")
-    H.ok(vim.uv.now() - t0 < 3000)
-    local d = hints()[1]
-    H.eq("crate 'rand' is not a dependency", d.message)
-    H.eq(vim.diagnostic.severity.HINT, d.severity)
-    H.eq("xyno-crates", d.source)
-    H.eq(1, d.lnum)
-
-    -- the in-process server is attached and its action reaches vim.lsp.buf.code_action (<leader>ca)
-    H.wait_for(function()
-      return #H.clients(buf, "xyno-crates") > 0
-    end, 5000, "the xyno-crates client")
-    vim.api.nvim_win_set_cursor(0, { d.lnum + 1, d.col })
-    local titles
-    local orig_select = stub(vim.ui, "select", function(items, _, on_choice)
-      titles = vim.tbl_map(function(i)
-        return i.action and i.action.title or tostring(i)
-      end, items)
-      on_choice(nil)
-    end)
-    vim.lsp.buf.code_action({ filter = function(a) return a.title:find("^Add crate") ~= nil end })
-    H.wait_for(function()
-      return titles
-    end, 3000, "the code-action menu")
-    H.has(titles, "Add crate rand")
-    vim.ui.select = orig_select
-
-    -- apply it: cargo add rand runs for the package of the file, the hint goes away
-    vim.lsp.buf.code_action({
-      filter = function(a)
-        return a.title == "Add crate rand"
-      end,
-      apply = true,
-    })
-    H.wait_for(function()
-      return #calls > 0
-    end, 5000, "cargo add")
-    H.eq({ "cargo", "add", "rand", "-p", "app2" }, calls[1].argv)
-    H.wait_for(function()
-      return #hints() == 0
-    end, 8000, "the hint to disappear")
-  end)
+  )
 
   it("offers nothing away from the hint", function()
-    H.known_issue({ "windows" }, "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)")
+    H.known_issue(
+      { "windows" },
+      "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)"
+    )
     have_rust()
     local root = make_ws2()
     start()
@@ -629,13 +674,19 @@ describe("crate_add unknown-crate hint and code action", function()
     local acts = ca.actions_for(buf, { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 2 } })
     H.eq(0, #acts)
     local on = ca.actions_for(buf, { start = { line = 1, character = 14 }, ["end"] = { line = 1, character = 14 } })
-    H.eq({ "Add crate rand", "Add crate rand (choose features and target)" }, vim.tbl_map(function(a)
-      return a.title
-    end, on))
+    H.eq(
+      { "Add crate rand", "Add crate rand (choose features and target)" },
+      vim.tbl_map(function(a)
+        return a.title
+      end, on)
+    )
   end)
 
   it("the second action opens the :CrateAdd flow for that crate", function()
-    H.known_issue({ "windows" }, "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)")
+    H.known_issue(
+      { "windows" },
+      "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)"
+    )
     have_rust()
     local root = make_ws2()
     start()
@@ -665,7 +716,10 @@ describe("crate_add unknown-crate hint and code action", function()
   end)
 
   it("no hint for a crate that is a dependency, nor after the crate is removed again", function()
-    H.known_issue({ "windows" }, "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)")
+    H.known_issue(
+      { "windows" },
+      "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)"
+    )
     have_rust()
     local root = make_ws2()
     write(root .. "/app2/Cargo.toml", read(root .. "/app2/Cargo.toml") .. 'rand = { path = "../rand" }\n')
@@ -770,7 +824,9 @@ describe("crate_add: the real flow (crates.io + cargo add)", function()
     if vim.fn.executable("curl") ~= 1 or vim.fn.executable("cargo") ~= 1 then
       return false, "curl or cargo not found"
     end
-    local r = vim.system({ "curl", "-sS", "--max-time", "5", "-o", "/dev/null", "https://index.crates.io/config.json" }):wait(8000)
+    local r = vim
+      .system({ "curl", "-sS", "--max-time", "5", "-o", "/dev/null", "https://index.crates.io/config.json" })
+      :wait(8000)
     if r.code ~= 0 then
       return false, "no network to crates.io"
     end

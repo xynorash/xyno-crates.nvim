@@ -3,7 +3,6 @@
 local M = {}
 local cm = require("xyno_rust.crate_meta")
 
-
 local Manifest = require("xyno_crates.features.manifest")
 local Suggest = require("xyno_crates.features.suggest")
 local valid_features = require("xyno_crates.names").valid_features
@@ -55,7 +54,9 @@ local function action_of(s)
     command = {
       title = Suggest.title(s),
       command = M.command,
-      arguments = { { root = s.root, member = s.member, kind = s.kind, crate = s.crate, features = s.features, target = s.target } },
+      arguments = {
+        { root = s.root, member = s.member, kind = s.kind, crate = s.crate, features = s.features, target = s.target },
+      },
     },
   }
 end
@@ -91,7 +92,12 @@ local function make_server(dispatchers)
       end)
     elseif method == "workspace/executeCommand" then
       local arg = params.arguments and params.arguments[1]
-      if params.command ~= M.command or type(arg) ~= "table" or not valid_features(arg.features) or not cm.valid_name(arg.crate or "") then
+      if
+        params.command ~= M.command
+        or type(arg) ~= "table"
+        or not valid_features(arg.features)
+        or not cm.valid_name(arg.crate or "")
+      then
         return callback({ code = -32602, message = "bad arguments" }), id
       end
       Manifest.apply(arg, function(ok, how)

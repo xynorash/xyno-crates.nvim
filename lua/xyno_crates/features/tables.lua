@@ -3,8 +3,6 @@
 local M = {}
 local cm = require("xyno_rust.crate_meta")
 
-
-
 -- =========================================================== feature tables
 
 local function is_implicit(ft, f)
@@ -160,7 +158,9 @@ function M.features_of(d)
         section = { name = n }
       end
     end
-    local name = type(section) == "string" and (section == "dependencies" or section:match("^target%..*%.dependencies$")) and line:match("^([%w_%-]+)%s*=.*optional%s*=%s*true")
+    local name = type(section) == "string"
+      and (section == "dependencies" or section:match("^target%..*%.dependencies$"))
+      and line:match("^([%w_%-]+)%s*=.*optional%s*=%s*true")
     if type(section) == "table" and line:match("^optional%s*=%s*true") then
       name = section.name
     end
