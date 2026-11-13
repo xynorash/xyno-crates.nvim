@@ -132,7 +132,10 @@ function M.attach(bufnr)
   if file == "" then
     return
   end
-  local root = cm.root(file) or vim.fs.dirname(file)
+  -- nowait: this runs from a FileType autocmd. A cold cargo.locate() waited (vim.wait) there while
+  -- rustaceanvim's own start ran inside that wait and called vim.wait again: three nested waits and
+  -- the editor froze on the first Rust file (found with a fresh state, plugin clones).
+  local root = cm.root(file, { nowait = true }) or vim.fs.dirname(file)
   pcall(vim.lsp.start, { name = M.client_name, cmd = make_server, root_dir = root }, { bufnr = bufnr, silent = true })
 end
 
