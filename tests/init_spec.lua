@@ -16,6 +16,8 @@ local function without(blocked, fn)
     saved[m] = package.loaded[m]
     package.loaded[m] = nil
   end
+  -- LuaJIT (the Lua Neovim embeds) only has `package.loaders`; LuaLS flags it as deprecated since Lua 5.2 renamed it.
+  ---@diagnostic disable-next-line: deprecated
   local searchers = package.loaders or package.searchers
   local block = function(name)
     if vim.tbl_contains(blocked, name) then
