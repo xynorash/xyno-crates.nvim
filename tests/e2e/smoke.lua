@@ -4,7 +4,9 @@
 -- dependency gives one notification line.
 local failures = {}
 local function check(name, ok, detail)
-  io.stdout:write(("%s %s%s\n"):format(ok and "ok  " or "FAIL", name, (not ok and detail) and (": " .. tostring(detail)) or ""))
+  io.stdout:write(
+    ("%s %s%s\n"):format(ok and "ok  " or "FAIL", name, (not ok and detail) and (": " .. tostring(detail)) or "")
+  )
   if not ok then
     failures[#failures + 1] = name
   end
@@ -23,7 +25,8 @@ check("in-process server xyno-crates configured", vim.lsp.config["xyno-crates"] 
 check("no global <leader>rA by default", vim.fn.maparg("<leader>rA", "n") == "")
 check("no global <leader>rG by default", vim.fn.maparg("<leader>rG", "n") == "")
 
-local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p"))))
+local repo =
+  vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p"))))
 vim.cmd("helptags " .. vim.fn.fnameescape(repo .. "/doc"))
 for _, tag in ipairs({ "xyno-crates", "xyno-crates-setup", "xyno-crates-api", ":CrateAdd", ":CrateFeatures" }) do
   local ok, err = pcall(vim.cmd, "help " .. tag)
@@ -37,7 +40,13 @@ local orig = vim.notify
 vim.notify = function(msg)
   notes[#notes + 1] = msg
 end
-local mods = { "xyno_rust.crate_meta", "xyno_rust.code_actions", "xyno_rust.fsutil", "xyno_rust.rust_restart", "xyno_imports.engine" }
+local mods = {
+  "xyno_rust.crate_meta",
+  "xyno_rust.code_actions",
+  "xyno_rust.fsutil",
+  "xyno_rust.rust_restart",
+  "xyno_imports.engine",
+}
 local saved = {}
 for _, k in ipairs(mods) do
   saved[k] = package.loaded[k]
@@ -45,7 +54,11 @@ for _, k in ipairs(mods) do
 end
 local saved_path = package.path
 local saved_loaders = package.loaders
-package.loaders = { function() return nil end }
+package.loaders = {
+  function()
+    return nil
+  end,
+}
 package.path = ""
 local rtp = vim.o.runtimepath
 vim.o.runtimepath = ""

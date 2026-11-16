@@ -121,8 +121,11 @@ pub const LIMIT: Foo = Foo { a: 1 };
 pub struct AfterConst;
 ]]
   )
-  write(dir .. "/src/runtime.rs", "pub struct Runtime;\npub fn block_on() {}\n#[cfg(feature = \"macros\")]\npub struct MacroRuntime;\n")
-  write(dir .. "/src/private_impl.rs", "#[cfg(feature = \"derive\")]\npub struct Exported;\npub struct Hidden;\n")
+  write(
+    dir .. "/src/runtime.rs",
+    'pub struct Runtime;\npub fn block_on() {}\n#[cfg(feature = "macros")]\npub struct MacroRuntime;\n'
+  )
+  write(dir .. "/src/private_impl.rs", '#[cfg(feature = "derive")]\npub struct Exported;\npub struct Hidden;\n')
   write(
     dir .. "/src/macros/mod.rs",
     [[
@@ -330,44 +333,97 @@ describe("crate_features Cargo.toml edits", function()
   end)
 
   it("appends to an existing features array and to an inline table without one", function()
-    H.eq('[dependencies]\ntokio = { version = "1", features = ["rt", "macros"] }\n', (edit('[dependencies]\ntokio = { version = "1", features = ["rt"] }\n', "tokio", "add", { "macros" })))
-    H.eq('[dependencies]\nx = { version = "1", default-features = false, features = ["a"] }\n', (edit('[dependencies]\nx = { version = "1", default-features = false }\n', "x", "add", { "a" })))
+    H.eq(
+      '[dependencies]\ntokio = { version = "1", features = ["rt", "macros"] }\n',
+      (edit('[dependencies]\ntokio = { version = "1", features = ["rt"] }\n', "tokio", "add", { "macros" }))
+    )
+    H.eq(
+      '[dependencies]\nx = { version = "1", default-features = false, features = ["a"] }\n',
+      (edit('[dependencies]\nx = { version = "1", default-features = false }\n', "x", "add", { "a" }))
+    )
     H.eq('[dependencies]\nx = { features = ["a"] }\n', (edit("[dependencies]\nx = { }\n", "x", "add", { "a" })))
-    H.eq('[dependencies]\nserde = { workspace = true, features = ["derive"] } # c\n', (edit("[dependencies]\nserde = { workspace = true } # c\n", "serde", "add", { "derive" })))
+    H.eq(
+      '[dependencies]\nserde = { workspace = true, features = ["derive"] } # c\n',
+      (edit("[dependencies]\nserde = { workspace = true } # c\n", "serde", "add", { "derive" }))
+    )
   end)
 
   it("keeps a multi-line array's layout, comments and trailing comma", function()
     local src = '[dependencies]\ntokio = { version = "1", features = [\n    "rt", # runtime\n    "net",\n] }\n'
     local out = edit(src, "tokio", "add", { "macros" })
-    H.eq('[dependencies]\ntokio = { version = "1", features = [\n    "rt", # runtime\n    "net",\n    "macros",\n] }\n', out)
+    H.eq(
+      '[dependencies]\ntokio = { version = "1", features = [\n    "rt", # runtime\n    "net",\n    "macros",\n] }\n',
+      out
+    )
   end)
 
   it("edits the table form and the dotted-key form", function()
-    H.eq('[dependencies.serde]\nversion = "1"\nfeatures = ["derive"]\n\n[other]\na = 1\n', (edit('[dependencies.serde]\nversion = "1"\n\n[other]\na = 1\n', "serde", "add", { "derive" })))
-    H.eq('[dependencies.serde]\nversion = "1"\nfeatures = ["a", "derive"]\n', (edit('[dependencies.serde]\nversion = "1"\nfeatures = ["a"]\n', "serde", "add", { "derive" })))
-    H.eq('[dependencies]\nserde.workspace = true\nserde.features = ["derive"]\nrand = "1"\n', (edit('[dependencies]\nserde.workspace = true\nrand = "1"\n', "serde", "add", { "derive" })))
-    H.eq('[dependencies]\nserde.workspace = true\nserde.features = ["a", "derive"]\n', (edit('[dependencies]\nserde.workspace = true\nserde.features = ["a"]\n', "serde", "add", { "derive" })))
+    H.eq(
+      '[dependencies.serde]\nversion = "1"\nfeatures = ["derive"]\n\n[other]\na = 1\n',
+      (edit('[dependencies.serde]\nversion = "1"\n\n[other]\na = 1\n', "serde", "add", { "derive" }))
+    )
+    H.eq(
+      '[dependencies.serde]\nversion = "1"\nfeatures = ["a", "derive"]\n',
+      (edit('[dependencies.serde]\nversion = "1"\nfeatures = ["a"]\n', "serde", "add", { "derive" }))
+    )
+    H.eq(
+      '[dependencies]\nserde.workspace = true\nserde.features = ["derive"]\nrand = "1"\n',
+      (edit('[dependencies]\nserde.workspace = true\nrand = "1"\n', "serde", "add", { "derive" }))
+    )
+    H.eq(
+      '[dependencies]\nserde.workspace = true\nserde.features = ["a", "derive"]\n',
+      (edit('[dependencies]\nserde.workspace = true\nserde.features = ["a"]\n', "serde", "add", { "derive" }))
+    )
   end)
 
   it("picks the dependency table of the kind and target", function()
-    local src = '[dependencies]\nx = "1"\n\n[dev-dependencies]\nx = "1"\n\n[target.\'cfg(unix)\'.dependencies]\nx = "1"\n'
+    local src =
+      '[dependencies]\nx = "1"\n\n[dev-dependencies]\nx = "1"\n\n[target.\'cfg(unix)\'.dependencies]\nx = "1"\n'
     local dev = edit(src, "x", "add", { "f" }, { kind = "dev" })
-    H.eq('[dependencies]\nx = "1"\n\n[dev-dependencies]\nx = { version = "1", features = ["f"] }\n\n[target.\'cfg(unix)\'.dependencies]\nx = "1"\n', dev)
+    H.eq(
+      '[dependencies]\nx = "1"\n\n[dev-dependencies]\nx = { version = "1", features = ["f"] }\n\n[target.\'cfg(unix)\'.dependencies]\nx = "1"\n',
+      dev
+    )
     local tgt = edit(src, "x", "add", { "f" }, { target = "cfg(unix)" })
-    H.eq('[dependencies]\nx = "1"\n\n[dev-dependencies]\nx = "1"\n\n[target.\'cfg(unix)\'.dependencies]\nx = { version = "1", features = ["f"] }\n', tgt)
+    H.eq(
+      '[dependencies]\nx = "1"\n\n[dev-dependencies]\nx = "1"\n\n[target.\'cfg(unix)\'.dependencies]\nx = { version = "1", features = ["f"] }\n',
+      tgt
+    )
     local ws = cf.edit_manifest('[workspace.dependencies]\nx = "1"\n', { key = "x", workspace = true }, "add", { "f" })
     H.eq('[workspace.dependencies]\nx = { version = "1", features = ["f"] }\n', ws)
   end)
 
   it("handles a renamed dependency key and quoted keys", function()
-    H.eq('[dependencies]\nhelpers = { package = "util", path = "../util", features = ["fast"] }\n', (edit('[dependencies]\nhelpers = { package = "util", path = "../util" }\n', "helpers", "add", { "fast" })))
-    H.eq('[dependencies]\n"my-dep" = { version = "1", features = ["f"] }\n', (edit('[dependencies]\n"my-dep" = "1"\n', "my-dep", "add", { "f" })))
+    H.eq(
+      '[dependencies]\nhelpers = { package = "util", path = "../util", features = ["fast"] }\n',
+      (edit('[dependencies]\nhelpers = { package = "util", path = "../util" }\n', "helpers", "add", { "fast" }))
+    )
+    H.eq(
+      '[dependencies]\n"my-dep" = { version = "1", features = ["f"] }\n',
+      (edit('[dependencies]\n"my-dep" = "1"\n', "my-dep", "add", { "f" }))
+    )
   end)
 
   it("removes a feature and leaves the rest", function()
-    H.eq('[dependencies]\ntokio = { version = "1", features = ["rt"] }\n', (edit('[dependencies]\ntokio = { version = "1", features = ["rt", "macros"] }\n', "tokio", "remove", { "macros" })))
-    H.eq('[dependencies]\ntokio = { version = "1", features = ["macros"] }\n', (edit('[dependencies]\ntokio = { version = "1", features = ["rt", "macros"] }\n', "tokio", "remove", { "rt" })))
-    H.eq('[dependencies]\ntokio = { version = "1", features = [] }\n', (edit('[dependencies]\ntokio = { version = "1", features = ["rt"] }\n', "tokio", "remove", { "rt" })))
+    H.eq(
+      '[dependencies]\ntokio = { version = "1", features = ["rt"] }\n',
+      (
+        edit(
+          '[dependencies]\ntokio = { version = "1", features = ["rt", "macros"] }\n',
+          "tokio",
+          "remove",
+          { "macros" }
+        )
+      )
+    )
+    H.eq(
+      '[dependencies]\ntokio = { version = "1", features = ["macros"] }\n',
+      (edit('[dependencies]\ntokio = { version = "1", features = ["rt", "macros"] }\n', "tokio", "remove", { "rt" }))
+    )
+    H.eq(
+      '[dependencies]\ntokio = { version = "1", features = [] }\n',
+      (edit('[dependencies]\ntokio = { version = "1", features = ["rt"] }\n', "tokio", "remove", { "rt" }))
+    )
   end)
 
   it("reports what it cannot do instead of guessing", function()
@@ -416,14 +472,20 @@ describe("crate_features set_features", function()
     stub(cm, "exec", function(argv, opts, cb)
       calls[#calls + 1] = argv
       -- act like cargo add
-      write(dir .. "/Cargo.toml", '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = { version = "1", features = ["derive"] }\n')
+      write(
+        dir .. "/Cargo.toml",
+        '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = { version = "1", features = ["derive"] }\n'
+      )
       cb({ code = 0, stdout = "", stderr = "" })
     end)
     local ok, how = run(fake_dep(dir), { "derive" }, true)
     H.eq(true, ok)
     H.eq("cargo add", how)
     H.eq(1, #calls)
-    H.eq({ "cargo", "add", "serde", "--features", "derive", "--manifest-path", dir .. "/Cargo.toml", "--offline" }, calls[1])
+    H.eq(
+      { "cargo", "add", "serde", "--features", "derive", "--manifest-path", dir .. "/Cargo.toml", "--offline" },
+      calls[1]
+    )
   end)
 
   it("passes --dev / --build / --target and falls back to the online run", function()
@@ -435,7 +497,10 @@ describe("crate_features set_features", function()
       if #calls == 1 then
         return cb({ code = 101, stdout = "", stderr = "offline: no index" })
       end
-      write(dir .. "/Cargo.toml", '[package]\nname = "app"\nversion = "0.1.0"\n\n[dev-dependencies]\nserde = { version = "1", features = ["derive"] }\n')
+      write(
+        dir .. "/Cargo.toml",
+        '[package]\nname = "app"\nversion = "0.1.0"\n\n[dev-dependencies]\nserde = { version = "1", features = ["derive"] }\n'
+      )
       cb({ code = 0, stdout = "", stderr = "" })
     end)
     local ok = run(fake_dep(dir, { kind = "dev", target = "cfg(unix)" }), { "derive" }, true)
@@ -456,16 +521,26 @@ describe("crate_features set_features", function()
     local ok, how = run(fake_dep(dir), { "derive" }, true)
     H.eq(true, ok)
     H.eq("text edit", how)
-    H.eq('[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = { version = "1", features = ["derive"] } # keep\n', read(dir .. "/Cargo.toml"))
+    H.eq(
+      '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = { version = "1", features = ["derive"] } # keep\n',
+      read(dir .. "/Cargo.toml")
+    )
   end)
 
   it("edits renamed and path dependencies as text and never calls cargo for them", function()
     local dir = H.tmpdir()
-    write(dir .. "/Cargo.toml", '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nhelpers = { package = "util", path = "../util" }\n')
+    write(
+      dir .. "/Cargo.toml",
+      '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nhelpers = { package = "util", path = "../util" }\n'
+    )
     stub(cm, "exec", function()
       error("cargo must not run")
     end)
-    local ok, how = run(fake_dep(dir, { name = "util", alias = "helpers", rename = "helpers", source = vim.NIL and nil }), { "fast" }, true)
+    local ok, how = run(
+      fake_dep(dir, { name = "util", alias = "helpers", rename = "helpers", source = vim.NIL and nil }),
+      { "fast" },
+      true
+    )
     H.eq(true, ok, tostring(how))
     H.eq("text edit", how)
     H.match(read(dir .. "/Cargo.toml"), 'features = ["fast"]', true)
@@ -473,7 +548,10 @@ describe("crate_features set_features", function()
 
   it("switching off is a text edit", function()
     local dir = H.tmpdir()
-    write(dir .. "/Cargo.toml", '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = { version = "1", features = ["derive", "rc"] }\n')
+    write(
+      dir .. "/Cargo.toml",
+      '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = { version = "1", features = ["derive", "rc"] }\n'
+    )
     stub(cm, "exec", function()
       error("cargo must not run")
     end)
@@ -507,7 +585,10 @@ end)
 --- A temp crate with the given [dependencies] body; metadata offline or skip.
 local function crate_with(deps_toml, main_rs)
   local dir = H.tmpdir() .. "/cf-app"
-  write(dir .. "/Cargo.toml", '[package]\nname = "cf-app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n' .. deps_toml)
+  write(
+    dir .. "/Cargo.toml",
+    '[package]\nname = "cf-app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n' .. deps_toml
+  )
   write(dir .. "/src/main.rs", main_rs)
   local meta, err = cm.metadata(dir)
   if not meta then
@@ -534,7 +615,8 @@ end
 describe("crate_features on real crates", function()
   it("serde: #[derive(Serialize)] without the derive feature -> enable `derive`", function()
     H.need_rust()
-    local dir, meta = crate_with('serde = "1"\n', "use serde::Serialize;\n#[derive(Serialize)]\nstruct A;\nfn main() {}\n")
+    local dir, meta =
+      crate_with('serde = "1"\n', "use serde::Serialize;\n#[derive(Serialize)]\nstruct A;\nfn main() {}\n")
     local s = suggest(meta, dir, "cannot find derive macro `Serialize` in this scope", 1)
     H.eq(1, #s, vim.inspect(s))
     H.eq("serde", s[1].crate)
@@ -559,10 +641,21 @@ describe("crate_features on real crates", function()
 
   it("offers nothing when the feature is already on, for an item in no feature, or for no diagnostic", function()
     H.need_rust()
-    local dir, meta = crate_with('serde = { version = "1", features = ["derive"] }\n', "use serde::Serialize;\n#[derive(Serialize)]\nstruct A;\nfn main() {}\n")
-    H.eq({}, suggest(meta, dir, "cannot find derive macro `Serialize` in this scope", 1), "derive is on: not a feature problem")
+    local dir, meta = crate_with(
+      'serde = { version = "1", features = ["derive"] }\n',
+      "use serde::Serialize;\n#[derive(Serialize)]\nstruct A;\nfn main() {}\n"
+    )
+    H.eq(
+      {},
+      suggest(meta, dir, "cannot find derive macro `Serialize` in this scope", 1),
+      "derive is on: not a feature problem"
+    )
     local dir2, meta2 = crate_with('serde = "1"\n', "#[derive(Frobnicate)]\nstruct A;\nfn main() {}\n")
-    H.eq({}, suggest(meta2, dir2, "cannot find derive macro `Frobnicate` in this scope", 0), "an item that exists in no feature")
+    H.eq(
+      {},
+      suggest(meta2, dir2, "cannot find derive macro `Frobnicate` in this scope", 0),
+      "an item that exists in no feature"
+    )
     H.eq({}, suggest(meta2, dir2, "mismatched types", 0))
     H.eq({}, cf.suggest(meta2, dir2 .. "/src/main.rs", { "" }, {}))
   end)
@@ -572,13 +665,21 @@ describe("crate_features on real crates", function()
     local dir, meta = crate_with('serde = "1"\n', "#[derive(Debug, Serialize)]\nstruct A;\nfn main() {}\n")
     local lines = vim.fn.readfile(dir .. "/src/main.rs")
     local col = lines[1]:find("Serialize", 1, true) - 1
-    local s = cf.suggest(meta, dir .. "/src/main.rs", lines, { { message = "unresolved macro", lnum = 0, col = col, end_lnum = 0, end_col = col + 9 } })
+    local s = cf.suggest(
+      meta,
+      dir .. "/src/main.rs",
+      lines,
+      { { message = "unresolved macro", lnum = 0, col = col, end_lnum = 0, end_col = col + 9 } }
+    )
     H.eq({ "derive" }, s[1] and s[1].features)
   end)
 
   it("explores serde: declared vs available, what derive unlocks, the unused hint", function()
     H.need_rust()
-    local dir, meta = crate_with('serde = { version = "1", features = ["derive"] }\n', "use serde::Serialize;\n#[derive(Serialize)]\nstruct A;\nfn main() {}\n")
+    local dir, meta = crate_with(
+      'serde = { version = "1", features = ["derive"] }\n',
+      "use serde::Serialize;\n#[derive(Serialize)]\nstruct A;\nfn main() {}\n"
+    )
     local d = cm.dependencies(meta, { name = "serde" })[1]
     local info = cf.explore(meta, d)
     local by = {}
@@ -633,7 +734,12 @@ describe("crate_features acceptance on tests/fixtures/deps-lab-nofeature", funct
       end
     end
     H.ok(lnum, "fixture still derives Serialize")
-    local s = cf.suggest(meta, main, lines, { { message = "cannot find derive macro `Serialize` in this scope", lnum = lnum, col = 0 } })
+    local s = cf.suggest(
+      meta,
+      main,
+      lines,
+      { { message = "cannot find derive macro `Serialize` in this scope", lnum = lnum, col = 0 } }
+    )
     H.eq(1, #s, vim.inspect(s))
     H.eq({ "serde", { "derive" } }, { s[1].crate, s[1].features })
     -- the code action in the normal menu: a buffer of the file with the
@@ -646,13 +752,27 @@ describe("crate_features acceptance on tests/fixtures/deps-lab-nofeature", funct
     local clients = vim.lsp.get_clients({ bufnr = buf, name = cf.client_name })
     H.eq(1, #clients, "the in-process client attached")
     local ns = vim.api.nvim_create_namespace("cf-spec")
-    vim.diagnostic.set(ns, buf, { { lnum = lnum, col = 0, end_lnum = lnum, end_col = 5, severity = 1, message = "cannot find derive macro `Serialize` in this scope", source = "bacon-ls" } })
+    vim.diagnostic.set(ns, buf, {
+      {
+        lnum = lnum,
+        col = 0,
+        end_lnum = lnum,
+        end_col = 5,
+        severity = 1,
+        message = "cannot find derive macro `Serialize` in this scope",
+        source = "bacon-ls",
+      },
+    })
     stub(ca, "client_name", cf.client_name)
     local list = ca.request_wait(buf, { start = { lnum, 0 }, ["end"] = { lnum, 1 } }, {})
     local hits = ca.filter(list, { title = "Enable feature `derive` of `serde`", plain = true })
-    H.eq(1, #hits, vim.inspect(vim.tbl_map(function(a)
-      return a.title
-    end, list)))
+    H.eq(
+      1,
+      #hits,
+      vim.inspect(vim.tbl_map(function(a)
+        return a.title
+      end, list))
+    )
     H.eq("quickfix", hits[1].kind)
     local before = read(dir .. "/Cargo.toml")
     local ok, aerr = ca.apply(hits[1], { timeout = 60000 })
@@ -663,15 +783,23 @@ describe("crate_features acceptance on tests/fixtures/deps-lab-nofeature", funct
     H.match(after, 'clap = { version = "4", features = ["derive"] }', true)
     -- cargo check on the edited copy
     local target = H.tmpdir()
-    local r = vim.system({ "cargo", "check", "--offline", "--quiet", "--target-dir", target }, { cwd = dir, text = true }):wait(110000)
+    local r = vim
+      .system({ "cargo", "check", "--offline", "--quiet", "--target-dir", target }, { cwd = dir, text = true })
+      :wait(110000)
     H.eq(0, r.code, (r.stderr or ""):sub(-1500))
   end)
 
   it("an uneditable-by-cargo manifest still gets the feature through the text edit (workspace = true)", function()
     H.need_rust()
     local root = H.tmpdir() .. "/ws"
-    write(root .. "/Cargo.toml", '[workspace]\nmembers = ["m"]\nresolver = "2"\n\n[workspace.dependencies]\nserde = "1" # keep me\n')
-    write(root .. "/m/Cargo.toml", '[package]\nname = "m"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde = { workspace = true } # c\n')
+    write(
+      root .. "/Cargo.toml",
+      '[workspace]\nmembers = ["m"]\nresolver = "2"\n\n[workspace.dependencies]\nserde = "1" # keep me\n'
+    )
+    write(
+      root .. "/m/Cargo.toml",
+      '[package]\nname = "m"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde = { workspace = true } # c\n'
+    )
     write(root .. "/m/src/main.rs", "fn main() {}\n")
     local meta, err = cm.metadata(root)
     if not meta then
@@ -689,8 +817,15 @@ describe("crate_features acceptance on tests/fixtures/deps-lab-nofeature", funct
       return done
     end, 5000)
     H.eq(true, ok, tostring(how))
-    H.eq('[package]\nname = "m"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde = { workspace = true, features = ["derive"] } # c\n', read(root .. "/m/Cargo.toml"))
-    H.eq('[workspace]\nmembers = ["m"]\nresolver = "2"\n\n[workspace.dependencies]\nserde = "1" # keep me\n', read(root .. "/Cargo.toml"), "the workspace table is not touched")
+    H.eq(
+      '[package]\nname = "m"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde = { workspace = true, features = ["derive"] } # c\n',
+      read(root .. "/m/Cargo.toml")
+    )
+    H.eq(
+      '[workspace]\nmembers = ["m"]\nresolver = "2"\n\n[workspace.dependencies]\nserde = "1" # keep me\n',
+      read(root .. "/Cargo.toml"),
+      "the workspace table is not touched"
+    )
   end)
 end)
 
@@ -787,8 +922,14 @@ end)
 describe("crate_features review fixes", function()
   local function dep(dir)
     return {
-      name = "serde", alias = "serde", kind = "normal", features = {}, uses_default_features = true,
-      source = "path+file:///x", member = "app", member_manifest = dir .. "/Cargo.toml",
+      name = "serde",
+      alias = "serde",
+      kind = "normal",
+      features = {},
+      uses_default_features = true,
+      source = "path+file:///x",
+      member = "app",
+      member_manifest = dir .. "/Cargo.toml",
     }
   end
   local function run(d, features, on)
@@ -805,7 +946,9 @@ describe("crate_features review fixes", function()
   it("a comment with brackets inside the features array does not end it early", function()
     local out = cf.edit_manifest(
       '[dependencies]\nserde = { version = "1", features = [ # see [docs]\n "derive" ] }\n',
-      { key = "serde", kind = "normal" }, "add", { "std" }
+      { key = "serde", kind = "normal" },
+      "add",
+      { "std" }
     )
     H.eq('[dependencies]\nserde = { version = "1", features = [ # see [docs]\n "derive",\n "std" ] }\n', out)
   end)
@@ -813,7 +956,9 @@ describe("crate_features review fixes", function()
   it("single-quoted features are items and are kept", function()
     local out = cf.edit_manifest(
       "[dependencies]\nserde = { version = \"1\", features = ['derive','alloc'] }\n",
-      { key = "serde", kind = "normal" }, "add", { "std" }
+      { key = "serde", kind = "normal" },
+      "add",
+      { "std" }
     )
     H.eq("[dependencies]\nserde = { version = \"1\", features = ['derive','alloc', \"std\"] }\n", out)
   end)
@@ -846,7 +991,7 @@ describe("crate_features client lifecycle", function()
   it("a stopped in-process client leaves vim.lsp.get_clients (on_exit is reported)", function()
     local dir = H.tmpdir()
     vim.fn.mkdir(dir .. "/src", "p")
-    vim.fn.writefile({ '[package]', 'name = "x"', 'version = "0.1.0"', 'edition = "2021"' }, dir .. "/Cargo.toml")
+    vim.fn.writefile({ "[package]", 'name = "x"', 'version = "0.1.0"', 'edition = "2021"' }, dir .. "/Cargo.toml")
     vim.fn.writefile({ "fn main() {}" }, dir .. "/src/main.rs")
     vim.cmd.edit(vim.fn.fnameescape(dir .. "/src/main.rs"))
     local buf = vim.api.nvim_get_current_buf()

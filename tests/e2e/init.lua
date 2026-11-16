@@ -3,7 +3,8 @@
 -- XYNO_LAZY is the path of a lazy.nvim clone; XYNO_RUST_DIR and XYNO_IMPORTS_DIR are
 -- the ones of the dependencies (default: sibling checkouts).
 -- Run:  XYNO_LAZY=/path/to/lazy.nvim nvim --headless -u tests/e2e/init.lua -c "luafile tests/e2e/smoke.lua"
-local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p"))))
+local repo =
+  vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p"))))
 local function sibling(var, name)
   local dir = vim.env[var]
   if not dir or dir == "" then

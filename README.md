@@ -13,7 +13,7 @@ Adding a dependency means leaving the editor for crates.io, copying a name, find
 ## Requirements
 
 - Neovim 0.12+
-- [xyno-rust.nvim](https://github.com/xynorash/xyno-rust.nvim) (crate metadata, code actions, file helpers, server restart after a manifest change) and [xyno-imports.nvim](https://github.com/xynorash/xyno-imports.nvim) (the import engine the crate import plugs into). Both are checked in `setup()`: without them you get one error line naming the missing plugin and nothing starts. xyno-imports.nvim is only needed while the `add` or `import` module is on.
+- [xyno-rust.nvim](https://github.com/xynorash/xyno-rust.nvim) (crate metadata, code actions, file helpers, server restart after a manifest change) and [xyno-imports.nvim](https://github.com/xynorash/xyno-imports.nvim) (the import engine the crate import plugs into). Both are checked in `setup()`: without them you get one error line naming the missing plugin and nothing starts. xyno-imports.nvim is only needed while the `add` or `import` module is on. `setup()` also checks the API version (`require("xyno_rust").compatible(require("xyno_crates").requires_rust_api)`, now `1.1`): a xyno-rust.nvim with another major or an older minor gives one error line naming the fix, and nothing starts. The CI workflow fetches the dependencies by tag (`XYNO_RUST_REF`, `XYNO_IMPORTS_REF`), never `main`; pin your own plugin manager the same way (`tag = "v0.2.0"` or a commit) so a breaking major cannot arrive unannounced.
 - `cargo` in `$PATH` (`cargo add`, `cargo metadata`)
 - the tree-sitter `rust` parser (the unknown-crate scan)
 - network access to crates.io for the search (the sparse index and a cache are used where possible)
@@ -55,20 +55,43 @@ The code actions and the hint come from in-process language clients that start w
     features = true, -- xyno_crates.crate_features: missing-feature action, :CrateFeatures
     import = true,   -- xyno_crates.crate_import: import from a crate that is not a dependency yet
   },
+  add = {},        -- { confirm = true, typosquat = true, audit = "hint"|"run"|"off", extra_popular = {} }
 }
 ```
 
 No global keymap is set by default. `keymaps = true` maps `<leader>rA` (`:CrateAdd`, buffer-local in Rust and `Cargo.toml` buffers) and `<leader>rG` (the missing-feature fix for the cursor line, buffer-local in Rust buffers); a table maps only what you list, to the keys you choose.
 
-The modules start once per session: a second `setup()` call does not redefine their autocommands, language servers or keys.
+`setup()` can be called again: the second call replaces the first one's autocommands, commands, keys and options (a module switched off is stopped; the in-process language servers keep running and are not restarted). Invalid options (unknown module, wrong type, `add.audit` not one of `hint`/`run`/`off`) are refused as a whole with one error message and nothing changes.
 
 `vim.g.xyno_crate_check = false` switches the unknown-crate hint off. The limits live in each module's `config` table, for example `require("xyno_crates.crate_add").config`: `debounce_ms = 300`, `max_diagnostics = 50` per buffer, `cargo_timeout_ms = 180000`, `max_lines = 20000` (larger buffers get no hint). `crate_features.config` has the scan limits (`max_files`, `max_file_bytes`, `max_unused_files`, `max_unused_bytes`, `max_alts`), `crate_import.config` has `max_guesses = 3`, `min_guess_len = 3`, `poll_ms = 1000`, `reload_timeout_ms = 60000`.
+
+| option | default | meaning |
+| --- | --- | --- |
+| `commands` | `true` | define `:CrateAdd` and `:CrateFeatures` |
+| `keymaps` | `false` | `true` or a table of the keys you want |
+| `modules.add` / `features` / `import` | `true` | switch a module off (it is stopped, the others go on) |
+| `add.confirm` | `true` | preview and ask before `cargo add` |
+| `add.typosquat` | `true` | warn about names close to a popular crate |
+| `add.audit` | `"hint"` | `"hint"`, `"run"` (run cargo-audit) or `"off"` |
+| `add.extra_popular` | `{}` | more crate names the typosquat check compares against |
+
+Options are validated: a wrong type or unknown key gives one error line naming every problem and nothing is changed. Highlights: the pickers are snacks.nvim's (or `vim.ui.select` without it) and the confirmation is a `vim.ui.select`; this plugin draws no window or highlight of its own, so there are no `XynoCrates*` groups and everything follows your UI plugin and colorscheme.
+
+## Confirmation before `cargo add`
+
+Every add (`:CrateAdd` and the `Add crate X` action, which the import source uses too) shows a preview and asks first: the crate, the version (the newest one on crates.io; cargo itself picks the newest compatible with the package's `rust-version`), the features and whether the default ones stay on, the table it goes into, the downloads (total and last 90 days) and the age (first published, last updated) from the crates.io API when it answers, and the repository. The lookups reuse xyno-rust.nvim's cache; a warm preview takes a few milliseconds, a cold one one or two network round trips (measured here: 1.4 s for `serde` on this machine, 2 ms warm). Offline, the preview says so and still asks.
+
+A **typosquat warning** is shown when the name is within one edit (two for names of eight letters or more; a swap of neighbouring letters counts as one) of a popular crate, or differs only by look-alike letters (`rn`/`m`, `0`/`o`, `1`/`l`), and the crate has fewer than 2 million downloads. `-` and `_` are one spelling, as at crates.io. With a warning, the first choice is **Cancel**. Also warned: a crate first published less than 30 days ago, and a name the index does not know. Limits: the list of popular crates is a built-in list of about 250 names, not the live top of crates.io, so this is a hint and not a verdict (a squat of a crate not on the list is not caught); `add = { extra_popular = { "my-crate" } }` guards more names.
+
+**Text sent by the registry is untrusted.** The newest version and the repository URL (and the feature names, descriptions and advisory titles shown in the pickers and after an audit) pass through `vet.sanitize` before they are displayed: terminal escape sequences (CSI, OSC including hyperlinks), control characters, bidi overrides and isolates, zero-width characters and invalid UTF-8 are removed, whitespace including newlines collapses to one space, and the text is cut to a fixed length. In the confirmation it sits in its own block, headed "from crates.io (unverified text ...)", every line prefixed with `|`, so it cannot pass for the plugin's own lines; the plugin's `WARNING:` lines never contain registry text. A repository that is not a plain `http(s)` URL (other scheme, user:password@) is marked "do not open it". The URL is only text: nothing opens or fetches it.
+
+If `cargo-audit` is installed the preview says so; `add = { audit = "run" }` also runs `cargo audit --json` after the add and reports the advisories that name the added crate. That check only sees what the local advisory database knows. There is no OSV query (it would send the crate name to a third-party service); `audit = "off"` removes the hint. `add = { confirm = false }` turns the question off.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `:CrateAdd [query]` | Search crates.io, pick the crate, pick its features (`default` is preselected; unticking it means `--no-default-features`), pick the target (member and kind: dependencies, dev-dependencies, build-dependencies; entries of `[workspace.dependencies]` are marked) and run `cargo add`. The line cargo wrote is reported. |
+| `:CrateAdd [query]` | Search crates.io, pick the crate, pick its features (`default` is preselected; unticking it means `--no-default-features`), pick the target (member and kind: dependencies, dev-dependencies, build-dependencies; entries of `[workspace.dependencies]` are marked) then show a preview and ask (see below) and run `cargo add`. The line cargo wrote is reported. |
 | `:CrateFeatures [crate]` | Explore the cargo features of a dependency: declared and effective features, what each unlocks (the gated public items found in the crate's source), the default set, and an "unused?" hint for a feature none of whose items appears in the workspace. Toggle one from the list: `Cargo.toml` is edited. |
 
 ## Code actions
@@ -92,6 +115,10 @@ The hint is rescanned after `InsertLeave`, `TextChanged`, `BufWritePost`, `BufRe
 ## How it works
 
 Crate metadata comes from `cargo metadata` and the crates.io sparse index (through xyno-rust.nvim), cached. The unknown-crate scan walks the tree-sitter tree of the buffer, debounced. The missing-feature lookup reads the unpacked source of the dependencies (`lib.rs` and the modules it declares, behind `#[cfg(feature = "...")]`, `pub use`, `macro_rules!`). `Cargo.toml` is edited with `cargo add --features` for registry dependencies and with a careful text edit (formatting and comments kept) for the rest. Everything that comes from the network or from files (crate and feature names) is validated before it reaches a command line, and commands run as argv lists.
+
+## Layout
+
+`lua/xyno_crates/crate_features.lua` is the facade (setup, keys); the parts are `features/scan.lua` (cfg gates and the source scanner), `tables.lua` (feature closures), `suggest.lua` (diagnostics to features), `manifest.lua` (Cargo.toml edits), `action.lua` (the in-process language client) and `explorer.lua` (`:CrateFeatures`). `require("xyno_crates.crate_features")` exposes the same functions as before the split.
 
 ## Platforms
 

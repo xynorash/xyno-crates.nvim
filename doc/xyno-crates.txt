@@ -60,7 +60,11 @@ JetBrains.
       },
     })
 <
-The modules start once per session: a second call does not redefine their
+setup() can be called again: the second call replaces the autocommands,
+commands, keys and options of the first (modules switched off are stopped; the
+language servers keep running). Invalid options are refused as a whole with one
+error. The old note follows.
+The modules used to start once per session: a second call did not redefine their
 autocommands, language servers or keys.
 
                                                         *xyno-crates-variables*
@@ -84,7 +88,10 @@ Each module has a `config` table with its limits, for example
     features (`default` is preselected; unticking it means
     `--no-default-features`), pick the target (member, kind: dependencies,
     dev-dependencies, build-dependencies; entries of [workspace.dependencies]
-    are marked) and run `cargo add`. The line cargo wrote is reported.
+    are marked), show a preview (crate, version, features, downloads, age,
+    typosquat warning, cargo-audit hint) and ask, then run `cargo add`. The
+    line cargo wrote is reported. `add = { confirm = false }` skips the question,
+    `add = { audit = "run" }` runs `cargo audit` afterwards.
 
                                                                *:CrateFeatures*
 :CrateFeatures [crate]

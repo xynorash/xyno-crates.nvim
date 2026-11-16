@@ -350,17 +350,28 @@ describe("crate_add's action uses the same path", function()
       got = { b, spec.crate, spec.name }
     end)
     local srv = cadd.server({})
-    srv.request("workspace/executeCommand", { command = "xyno.crateAdd", arguments = { { name = "rand", bufnr = buf } } }, function() end)
+    srv.request(
+      "workspace/executeCommand",
+      { command = "xyno.crateAdd", arguments = { { name = "rand", bufnr = buf } } },
+      function() end
+    )
     H.eq({ buf, "rand", nil }, got)
     got = nil
-    srv.request("workspace/executeCommand", { command = "xyno.crateAdd", arguments = { { name = "--git", bufnr = buf } } }, function() end)
+    srv.request(
+      "workspace/executeCommand",
+      { command = "xyno.crateAdd", arguments = { { name = "--git", bufnr = buf } } },
+      function() end
+    )
     H.is_nil(got, "a flag-like name is refused")
   end)
 end)
 
 describe("real: Uuid from nothing", function()
   it("search, add the crate, wait for rust-analyzer, import, cargo build", function()
-    H.known_issue({ "windows" }, "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)")
+    H.known_issue(
+      { "windows" },
+      "live rust-analyzer flow fails or hangs on Windows (windows-latest run 39647013043; cause not diagnosed)"
+    )
     H.need_rust()
     local info = cm.info("uuid", { index_only = true })
     if not info then
@@ -402,7 +413,9 @@ describe("real: Uuid from nothing", function()
     local toml = table.concat(vim.fn.readfile(dir .. "/Cargo.toml"), "\n")
     H.match(toml, "uuid", true)
     vim.cmd("silent write")
-    local r = vim.system({ "cargo", "check", "--quiet", "--target-dir", H.tmpdir() }, { cwd = dir, text = true }):wait(170000)
+    local r = vim
+      .system({ "cargo", "check", "--quiet", "--target-dir", H.tmpdir() }, { cwd = dir, text = true })
+      :wait(170000)
     H.eq(0, r.code, (r.stderr or ""):sub(-1500))
   end)
 end)

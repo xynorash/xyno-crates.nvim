@@ -36,7 +36,10 @@ local function ident(crate)
 end
 
 local function usable(crate)
-  return type(crate) == "string" and cm.valid_name(crate) and crate:sub(1, 1) ~= "-" and ident(crate):match("^[%a_][%w_]*$") ~= nil
+  return type(crate) == "string"
+    and cm.valid_name(crate)
+    and crate:sub(1, 1) ~= "-"
+    and ident(crate):match("^[%a_][%w_]*$") ~= nil
 end
 
 -- ----------------------------------------------------- wait and import
@@ -52,7 +55,14 @@ function M.wait_and_import(buf, mark_ns, mark, name, spec, cb)
   local poll
   local function again()
     if vim.uv.now() - started > M.config.reload_timeout_ms then
-      return cb(false, ("rust-analyzer did not offer an import of %s from %s within %d s; the crate is added, try :ImportName"):format(name, spec.ident, M.config.reload_timeout_ms / 1000))
+      return cb(
+        false,
+        ("rust-analyzer did not offer an import of %s from %s within %d s; the crate is added, try :ImportName"):format(
+          name,
+          spec.ident,
+          M.config.reload_timeout_ms / 1000
+        )
+      )
     end
     vim.defer_fn(poll, M.config.poll_ms)
   end
@@ -243,7 +253,11 @@ function M.source(name, ctx, cb)
               pos = pos,
               fields = {
                 guess = true,
-                note = ("%s %s, %s downloads: crates.io search by name, the path is a guess"):format(c.name, c.version or "", c.downloads and tostring(c.downloads) or "?"),
+                note = ("%s %s, %s downloads: crates.io search by name, the path is a guess"):format(
+                  c.name,
+                  c.version or "",
+                  c.downloads and tostring(c.downloads) or "?"
+                ),
               },
             })
           end
@@ -274,9 +288,17 @@ end
 local unregister
 function M.setup()
   if unregister then
-    return
+    return -- the source is registered; setup() again changes nothing here
   end
   unregister = require("xyno_imports.engine").register_source(M.source, { async = true })
+end
+
+--- Remove the import source again (xyno_crates.setup{ modules = { import = false } } after a first setup).
+function M.stop()
+  if unregister then
+    pcall(unregister)
+    unregister = nil
+  end
 end
 
 return M
